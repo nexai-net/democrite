@@ -50,6 +50,7 @@ namespace Democrite.Framework.Extensions.Docker
             : base(arguments, cancellationToken)
         {
             this._definition = definition;
+            //TO-DO from Opus 5.5 Executor path lowercased breaks Linux containers : Lowercasing the executor changes case-sensitive paths and commands inside Linux containers (for example '/app/MyScript.py'), so the container command fails. Keep the executor as provided; container names are lowercased separately.
             this._executor = executor.ToLowerInvariant();
 
             this._dockerClientFactory = dockerClientFactory;
@@ -98,6 +99,7 @@ namespace Democrite.Framework.Extensions.Docker
         /// <inheritdoc />
         protected override void OnDisposeThreadSafeBegin()
         {
+            //TO-DO from Opus 5.5 Blocking sync-over-async in Dispose : Dispose blocks a thread on KillAsync, which has no timeout or token, so an unreachable Docker daemon hangs disposal indefinitely and holds a thread-pool thread. Implement IAsyncDisposable, or at least use a bounded timeout token for the kill and remove calls.
             Task.Run(async () => await KillAsync(default)).Wait();
             this._client?.Dispose();
         }
@@ -243,6 +245,7 @@ namespace Democrite.Framework.Extensions.Docker
             try
             {
                 var containerStatus = await client.Containers.InspectContainerAsync(this._containerId, cancellationToken);
+                //TO-DO from Opus 5.5 Exited container reported as alive : State.Dead is true only in a rare Docker state; an exited or stopped container has Dead == false, so the stale executor is reused. Return containerStatus.State.Running instead.
                 return containerStatus.State.Dead == false;
             }
             catch { }
@@ -288,6 +291,7 @@ namespace Democrite.Framework.Extensions.Docker
         {
             var client = GetDockerClient();
 
+            //TO-DO from Opus 5.5 Stale container cleanup misses stopped containers : ContainersListParameters without All = true lists only running containers, so a stopped container with the same name is not removed and CreateContainerAsync fails with a name conflict. The 'name' filter is also a substring/regex match combined with Limit = 1, so it can force-remove an unrelated container. Set All = true, use an anchored name ('^/name$'), drop Limit and pass the cancellation token.
             var existingContainer = await client.Containers.ListContainersAsync(new ContainersListParameters()
             {
                 Limit = 1,

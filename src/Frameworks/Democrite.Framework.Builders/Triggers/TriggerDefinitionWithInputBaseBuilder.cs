@@ -50,6 +50,7 @@ namespace Democrite.Framework.Builders.Implementations.Triggers
         public ITriggerDefinitionBuilder SetOutput(Func<ITriggerOutputBuilder, IDefinitionBaseBuilder<DataSourceDefinition>> outputBuilders)
         {
             var builder = new TriggerOutputBuilder();
+            //TO-DO from Opus 5.5 ThrowIfNull(nameof(x)) never throws : This checks the string literal "outputBuilders", which is never null, so a null delegate falls through and causes a NullReferenceException on the next line. Use `ArgumentNullException.ThrowIfNull(outputBuilders);`.
             ArgumentNullException.ThrowIfNull(nameof(outputBuilders));
             this.TriggerGlobalOutputDefinition = outputBuilders(builder).Build();
 

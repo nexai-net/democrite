@@ -27,6 +27,7 @@ namespace Democrite.Framework.Core.Executions
         #region Fields
 
         private readonly LambdaExpression _expression;
+        //TO-DO from Opus 5.5 Requested grain id is silently ignored : _forcedGrainId is stored but never read: RunImplAsync resolves the grain through IVGrainProvider.GetVGrainAsync(input, ctx), so VGrain<T>(Guid/long/string id) calls the wrong activation. Pass the forced id through to grain resolution, for example with a GetVGrainAsync overload that takes an IdSpan/GrainId.
         private readonly IdSpan? _forcedGrainId;
         private readonly TConfig? _config;
         private readonly TInput? _input;
@@ -133,6 +134,7 @@ namespace Democrite.Framework.Core.Executions
                                              .ToArray();
 
             // Compile expression into executable lambda
+            //TO-DO from Opus 5.5 Expression compiled and DynamicInvoked per call : Every execution compiles the lambda expression (expensive JIT) and calls it through DynamicInvoke, which is slow and wraps exceptions in TargetInvocationException. Compile once, lazily or in the constructor, into a typed delegate, or cache compiled delegates per expression.
             var func = this._expression.Compile();
 
             var result = func.DynamicInvoke(parameters);

@@ -186,6 +186,7 @@ namespace Democrite.Framework.Core.Abstractions.Models
         /// <summary>
         /// Gets the type.
         /// </summary>
+        //TO-DO from Opus 5.5 Type not serialized by Orleans : ReferenceTypeTarget is [GenerateSerializer] but Type has no [Id]/[DataMember], so it is dropped when ReferenceTargetRegistry is transferred and is null on the other silo (NRE in OnEquals/GetHashCode). Add [Id(0)] [DataMember] (and similarly Method in the derived class).
         public AbstractType Type { get; }
 
         #endregion
@@ -235,6 +236,7 @@ namespace Democrite.Framework.Core.Abstractions.Models
         /// <summary>
         /// Gets the method.
         /// </summary>
+        //TO-DO from Opus 5.5 Method not serialized by Orleans : ReferenceTypeMethodTarget.Method lacks an [Id] attribute, so method references lose their method after Orleans serialization. Add [Id(0)] [DataMember].
         public AbstractMethod Method { get; }
 
         #endregion

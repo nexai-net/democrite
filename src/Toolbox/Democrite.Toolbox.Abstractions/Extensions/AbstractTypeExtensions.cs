@@ -104,6 +104,7 @@ namespace System
                 }
             }
 
+            //TO-DO from Opus 5.5 Unused generic parameter crashes resolution : When a generic method parameter appears only in the return type, its solvedGeneric slot stays null and FoundCommonType(null) throws ArgumentNullException. For an empty set FoundCommonType returns default (null) and MakeGenericMethod fails. Detect unresolved slots and throw a clear exception, or fall back to the constraint type.
             var genericResolution = solvedGeneric.Select(FoundCommonType).ToArray();
 
             var solveMethod = method.MakeGenericMethod(genericResolution);
@@ -146,6 +147,7 @@ namespace System
             s_methodInfoFromAbstractCacheLocker.EnterReadLock();
             try
             {
+                //TO-DO from Opus 5.5 ToMethod cache ignores the target type : The cache key is only MethodUniqueId, so ToMethod(method, typeB) returns the MethodBase resolved earlier for typeA, for example an interface method resolved on different implementations. The full reflection scan also runs under the global write lock. Key the cache by (type, MethodUniqueId) and resolve outside the write lock.
                 if (s_methodInfoFromAbstractCache.TryGetValue(method.MethodUniqueId, out var cacheMthd))
                     return cacheMthd;
             }
@@ -474,6 +476,7 @@ namespace System
 
             var buildedType = BuildAbstractType(type);
 
+            //TO-DO from Opus 5.5 AbstractType cache is never populated : GetThreadSafeAbstractType checks s_abstractTypeCache again after the build but never calls Add, and nothing else writes to the cache. Every GetAbstractType call rebuilds the whole type graph while holding the global write lock, which serializes all callers. Add the built type to s_abstractTypeCache (for non-Generic/GenericRef categories) instead of doing a second TryGetValue.
             if (buildedType is not null &&
                 buildedType.Category != AbstractTypeCategoryEnum.Generic &&
                 buildedType.Category != AbstractTypeCategoryEnum.GenericRef)

@@ -88,6 +88,7 @@ namespace Democrite.Framework.Builders.Steps
                 throw new InvalidCastException(expression + " must return a Task<" + typeof(TOutput) + ">");
 
             var parameters = mthd.GetParameters();
+            //TO-DO from Opus 5.5 Fresh ParameterExpressions instead of lambda parameters : Argument expressions taken from methodCall.Arguments reference the user lambda's own ParameterExpressions, but they are re-wrapped with new parameters built from the method signature (names and identities differ). Name-based call chains break when the lambda names differ from the method parameter names, and identity-based member-init serialization cannot resolve them. Reuse `lambda.Parameters` (excluding the grain parameter).
             var lambdaParameters = parameters.Where(p => !p.ParameterType.IsAssignableTo(typeof(IVGrain)))
                                              .Select(p => Expression.Parameter(p.ParameterType, p.Name))
                                              .ToArray();

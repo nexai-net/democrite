@@ -117,6 +117,7 @@ namespace Democrite.Framework.Node.Signals
 
             var subscriptions = this.State!.Subscriptions;
 
+            //TO-DO from Opus 5.5 One failing subscriber blocks signal fan-out : Subscribers are awaited one after another with no try/catch, so a single dead or failing receiver throws and the remaining subscribers never get the signal; latency also grows with the number of subscribers. Dispatch in parallel (Task.WhenAll) and catch and log each failure, optionally removing dead subscriptions.
             foreach (var sub in subscriptions)
             {
                 ISignalReceiver? grain = null;

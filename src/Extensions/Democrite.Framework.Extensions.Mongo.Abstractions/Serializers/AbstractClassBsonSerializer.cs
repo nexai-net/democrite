@@ -302,6 +302,7 @@ namespace Democrite.Framework.Extensions.Mongo.Abstractions.Serializers
 
                     Debug.Assert(source.IsGenericTypeDefinition);
 
+                    //TO-DO from Opus 5.5 Nested generic discriminator resolution throws : After yielding the closed generic type, the loop falls through and calls ResolveArgumentType on the bare generic root name, which throws 'Could not result discriminator', so nested generic arguments can never be resolved. Add 'continue;' after this yield. Also, line 322 builds 'System.Collections.Generic' + part without the '.' separator.
                     yield return source.MakeGenericType(other);
                 }
 

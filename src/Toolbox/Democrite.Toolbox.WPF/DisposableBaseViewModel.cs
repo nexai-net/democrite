@@ -40,6 +40,7 @@ namespace Democrite.Toolbox.WPF
         /// </summary>
         ~DisposableBaseViewModel()
         {
+            //TO-DO from Opus 5.5 Finalizer disposes managed resources : The finalizer path still runs DisposeBegin, DisposeAllResourcesAsync (which disposes other managed objects and may call DispatcherProxy.Throw) and DisposeEnd, and blocks with .Wait(). This breaks the Dispose pattern. In the finalizer path, call only DisposeUnmanaged, or drop the finalizer since the type owns no unmanaged handles.
             Dispose(true);
         }
 
@@ -74,6 +75,7 @@ namespace Democrite.Toolbox.WPF
 
             DisposeBegin();
 
+            //TO-DO from Opus 5.5 Sync-over-async Dispose can deadlock UI thread : Dispose is typically called on the dispatcher thread (WindowExt.OnClosed, ViewClosed), and it blocks on async resource disposal. Any resource that marshals back to the UI thread (SendAndWait/SendAsync) deadlocks, and exceptions come back wrapped in AggregateException. Make resource disposal synchronous here, or have callers use the async-disposable base.
             Task.Run(() => DisposeAllResourcesAsync()).Wait();
 
             if (!fromFinalizer)

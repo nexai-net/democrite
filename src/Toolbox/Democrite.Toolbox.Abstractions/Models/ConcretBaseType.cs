@@ -86,6 +86,7 @@ namespace Democrite.Toolbox.Models
         /// </summary>
         protected virtual Type OnTypeResolution()
         {
+            //TO-DO from Opus 5.5 Type loaded from serialized string unchecked : AssemblyQualifiedName comes from deserialized data and is passed straight to Type.GetType, so remote payloads can force loading of arbitrary types or assemblies. The lazy _cachedType write is also unsynchronized. Validate against an allow-list or a known-assemblies resolver before resolving.
             return Type.GetType(this.AssemblyQualifiedName, true);
         }
 

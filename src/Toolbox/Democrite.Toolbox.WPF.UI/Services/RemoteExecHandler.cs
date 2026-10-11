@@ -92,6 +92,7 @@ namespace Democrite.Toolbox.WPF.UI.Services
 
                 if (proc.Start())
                 {
+                    //TO-DO from Opus 5.5 Redirected output read after exit deadlocks : stdout and stderr are redirected but only read after the process exits. When a child writes more than the pipe buffer, it blocks forever and so does this call (the classic Process deadlock). Read both streams concurrently (start the ReadToEndAsync tasks before waiting, or use BeginOutputReadLine/BeginErrorReadLine).
                     await proc.WaitForExitAsync(token);
 
                     logs = await proc.StandardOutput.ReadToEndAsync(token);
@@ -105,6 +106,7 @@ namespace Democrite.Toolbox.WPF.UI.Services
                 exception = ex;
             }
 
+            //TO-DO from Opus 5.5 ExitCode access throws when start failed : If Start throws or is cancelled, proc.ExitCode throws InvalidOperationException outside the try block, which defeats the error capture. The Process is also never disposed, and arguments are joined with spaces and no quoting (line 79). Guard ExitCode, wrap the Process in `using`, and use StartInfo.ArgumentList.
             return new RemoteExecResultRemoteExecResult(proc.ExitCode == 0,
                                                         logs,
                                                         errors,
@@ -120,6 +122,7 @@ namespace Democrite.Toolbox.WPF.UI.Services
             if (this._fileSystemHandler.Exists(this._execPathUri))
                 return;
 
+            //TO-DO from Opus 5.5 Downloaded executable run without integrity check : The binary is downloaded (possibly over HTTP) and executed with no hash or signature check. On an HTTP error an empty array is written as the executable, and because the file now exists it is never re-downloaded. Zip extraction errors are also swallowed. Verify a checksum, fail on a non-success status, pass the CancellationToken through, and do not persist empty or partial files.
             var bytes = await GetBytesFromUriAsync(this._uri);
 
             if (ExtractZipFileIfCan(bytes, this._installPath))

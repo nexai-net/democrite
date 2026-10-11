@@ -6,7 +6,9 @@
     <!-- Orlean -->
     <PackageVersion Include="Docker.DotNet" Version="3.125.15" />
     <PackageVersion Include="H.Formatters.Newtonsoft.Json" Version="13.0.59" />
+    <!--TO-DO from Opus 5.5 MessagePack version has known vulnerabilities : MessagePack 2.5.140 is flagged by NuGet audit (NU1902/NU1903, moderate and high advisories), and Democrite.Framework.Core.Abstractions references it, so every consumer inherits it. Upgrade to a patched 2.5.x release (2.5.187 or later), or remove it if it is unused, and enable NuGetAudit with warnings as errors for high severity.-->
     <PackageVersion Include="MessagePack" Version="2.5.140" />
+    <!--TO-DO from Opus 5.5 Mixed Orleans 7.2.4 and 8.0.0 versions : Orleans core packages are pinned to 8.0.0, while Clustering.AdoNet, Persistence.AdoNet, Reminders.AdoNet, Serialization.NewtonsoftJson and Serialization.TestKit stay on 7.2.4 (OrleansDashboard is on 7.2.2). Mixing major versions leads to runtime binding errors. Align every Orleans package on 8.x and delete the entries no project references; none of these 7.x packages is used under src.-->
     <PackageVersion Include="Microsoft.Orleans.Clustering.AdoNet" Version="7.2.4" />
     <PackageVersion Include="Microsoft.Orleans.Core" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Orleans.Core.Abstractions" Version="8.0.0" />
@@ -14,6 +16,7 @@
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Orleans.Reminders.AdoNet" Version="7.2.4" />
     <PackageVersion Include="Microsoft.Orleans.Runtime" Version="8.0.0" />
+    <!--TO-DO from Opus 5.5 Obsolete Orleans 3.x package declared : Microsoft.Orleans.Runtime.Abstractions 3.7.4 belongs to the legacy Orleans 3 line and is incompatible with Orleans 8, and no csproj references it. Remove the entry so nobody can pull it in by accident.-->
     <PackageVersion Include="Microsoft.Orleans.Runtime.Abstractions" Version="3.7.4" />
     <PackageVersion Include="Microsoft.Orleans.Serialization.NewtonsoftJson" Version="7.2.4" />
     <PackageVersion Include="Microsoft.Orleans.Serialization.TestKit" Version="7.2.4" />
@@ -37,6 +40,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <!--TO-DO from Opus 5.5 Mixed Microsoft.Extensions 7.x/8.x versions : Configuration.Abstractions, Configuration.Json, Configuration.Binder (7.0.4), Options.ConfigurationExtensions and DependencyInjection are pinned to 7.x, while Hosting, Logging, Configuration and Options are on 8.x. This causes NU1605/NU1608 downgrades and inconsistent transitive graphs. Align all Microsoft.Extensions.* packages on 8.0.x.-->
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="7.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="7.0.4" />
@@ -55,9 +59,11 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
     <!-- SECURITY ISSUE REMOVE MOQ and replace by NSubstitute-->
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
+    <!--TO-DO from Opus 5.5 Moq kept despite security note : Moq is still declared under the comment 'SECURITY ISSUE REMOVE MOQ and replace by NSubstitute'. Nine test or toolkit csproj files reference it, and seven .cs files still contain 'using Moq', including the packable Democrite.UnitTests.ToolKit. Migrate those usages to NSubstitute, which is already referenced, then remove the PackageVersion and every PackageReference.-->
     <PackageVersion Include="Moq" Version="4.20.70" />
     <PackageVersion Include="NFluent" Version="3.0.4" />
     <PackageVersion Include="xunit" Version="2.9.1" />
+    <!--TO-DO from Opus 5.5 Stale and unused package versions declared : xunit.extensibility.core 2.6.2 does not match xunit 2.9.1, and nothing references it. The same applies to BenchmarkDotNet.Core 0.10.14 (obsolete), HtmlAgilityPack, Swashbuckle.AspNetCore, SlowCheetah, Azure.Containers.Tools.Targets and several Orleans/Extensions entries. Prune the unused PackageVersion entries to reduce audit noise and version confusion.-->
     <PackageVersion Include="xunit.extensibility.core" Version="2.6.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
@@ -77,6 +83,7 @@
     <!-- Auto Ref In AspNet missing in WPF -->
     <PackageVersion Include="System.Data.Odbc" Version="8.0.0" />
     <PackageVersion Include="System.Data.OleDb" Version="8.0.0" />
+    <!--TO-DO from Opus 5.5 Deprecated System.Data.SqlClient package : System.Data.SqlClient is deprecated and in maintenance-only mode, and Democrite.Framework.Client.App references it. Replace it with Microsoft.Data.SqlClient, or remove it if it is only there for WPF/ASP.NET reference parity.-->
     <PackageVersion Include="System.Data.SqlClient" Version="4.8.6" />
     <PackageVersion Include="System.IO.Ports" Version="8.0.0" />
     <PackageVersion Include="System.Runtime.Serialization.Schema" Version="8.0.0" />

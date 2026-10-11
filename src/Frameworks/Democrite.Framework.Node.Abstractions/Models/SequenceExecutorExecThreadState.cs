@@ -85,6 +85,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
                                                  bool started,
                                                  bool done)
         {
+            //TO-DO from Opus 5.5 ReaderWriterLockSlim never disposed : The class derives from SafeDisposable but never overrides DisposeBegin to dispose _lock. SequenceExecutorState.Initialize also replaces MainThread without disposing the old instance, so each thread state leaks a kernel-backed lock. Dispose _lock (and the inner threads) in DisposeBegin, and dispose the replaced MainThread.
             this._lock = new ReaderWriterLockSlim();
 
             this.FlowUid = flowUid;
@@ -346,6 +347,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
             {
                 this._cursor = null;
                 this._output = output ?? NoneType.Instance;
+                //TO-DO from Opus 5.5 Running flag never reset on completion : _running is set to true in Update and never reset. After SetJobIsDone or SetError, Running stays true (and it is not persisted in the surrogate). Set `_running = false` in SetJobIsDone and SetError, and also clear _cursor in SetError for consistency.
                 this._done = true;
             }
             finally
@@ -423,6 +425,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
             this._lock.EnterReadLock();
             try
             {
+                //TO-DO from Opus 5.5 Equals uses reference equality, inconsistent hash : _output, ThreadInput, _exception and the inner threads are compared with == on object or class, which is reference equality, while GetHashCode uses their value hashes. Boxed or deserialized states never compare equal, and the Equals/GetHashCode contract is broken. Equals also holds this lock while taking other's lock, which risks a lock-ordering deadlock. Use object.Equals or SequenceEqual, and snapshot other's values before taking this lock.
                 return this._cursor == other.Cursor &&
                        this._errorMessage == other.ErrorMessage &&
                        this._exception == other.Exception &&

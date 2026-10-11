@@ -483,6 +483,7 @@ namespace Democrite.Framework.Cluster.Configurations
             serviceCollection.AddSingleton<DeferredClientObserver>()
                              .AddSingleton<IDeferredAwaiterHandler>(p => p.GetRequiredService<DeferredClientObserver>());
 
+            //TO-DO from Opus 5.5 Second service provider built and never disposed : Calling BuildServiceProvider during configuration creates a second container with duplicate singletons (possibly starting side effects) that is never disposed. Use the builder's InMemoryLogger, or a dedicated LoggerFactory that is disposed after Build.
             var loggerFactory = serviceCollection.BuildServiceProvider()
                                                  .GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
 
@@ -583,6 +584,7 @@ namespace Democrite.Framework.Cluster.Configurations
                     {
                         using (stream)
                         {
+                            //TO-DO from Opus 5.5 Config-driven DLL loading from working directory : Extension DLLs named in configuration are searched in Environment.CurrentDirectory and loaded without integrity checks, so anyone who controls config or the CWD can inject code. Resolve them from AppContext.BaseDirectory or a configured folder, optionally verify a hash or signature, and fix the log at line 576, which prints the IConfigurationSection objects instead of extensionsDll.
                             var assembly = this._assemblyLoader.Load(stream);
                             this._assemblyInspector.RegisterAssemblyAndDependencies(assembly, true);
                             logger.OptiLog(LogLevel.Information, "[Extensions] - Loaded - {extension}", Path.GetFileName(extension.OriginalString));

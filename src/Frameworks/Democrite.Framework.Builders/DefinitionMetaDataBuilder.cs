@@ -101,6 +101,7 @@ namespace Democrite.Framework.Builders
                 this._tags.Count == 0 &&
                 string.IsNullOrEmpty(this._namespaceIdntifier))
             {
+                //TO-DO from Opus 5.5 Non-nullable Build() returns null : Build() is declared to return a non-nullable DefinitionMetaData but returns null! when nothing is set. That hides possible NullReferenceExceptions from the nullable analysis for every caller. Declare the return type as DefinitionMetaData? (as Execute already does), or return an empty instance.
                 return null!;
             }
 

@@ -348,6 +348,7 @@ namespace Democrite.Framework.Configurations
             {
                 await initTasks.SafeWhenAllAsync(token);
             }
+            //TO-DO from Opus 5.5 Service initialization failures silently swallowed : Init failures of IInitService are only logged, and the node or client keeps starting with uninitialized services; StopAsync similarly swallows everything via OnStopFailed. Rethrow, or fail the start, when initialization fails.
             catch (AggregateException ex)
             {
                 foreach (var inner in ex.InnerExceptions)

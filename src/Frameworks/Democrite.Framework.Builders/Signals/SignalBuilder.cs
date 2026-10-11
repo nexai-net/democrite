@@ -43,6 +43,7 @@ namespace Democrite.Framework.Builders.Signals
         /// <inheritdoc />
         public SignalDefinition Build()
         {
+            //TO-DO from Opus 5.5 Parent signal ignored when building definition : Parent(...) stores _parent, but Build() never passes it to SignalDefinition (whose ctor accepts parentSignalId). Every sub-signal made with CreateSubSignal/StartBuildSubSignal therefore loses its parent link. Pass `this._parent?.SignalId` as the parentSignalId argument.
             return new SignalDefinition(this.Uid,
                                         RefIdHelper.Generate(RefTypeEnum.Signal, this.SimpleNameIdentifier, this.DefinitionMetaData?.NamespaceIdentifier),
                                         this.DisplayName ?? this.SimpleNameIdentifier,

@@ -345,6 +345,7 @@ namespace Democrite.Framework.Node.Blackboard.Abstractions.Models
         /// <inheritdoc/>
         protected override bool OnEquals(DataRecordContainer dataRecordContainer)
         {
+            //TO-DO from Opus 5.5 Equals throws when Data is null : OnEquals calls other.GetData<TData>(), which throws NotSupportedException when Data is null (`null is T` is false), so Equals and Distinct() throw on empty or preparation records. Compare by casting `dataRecordContainer is DataRecordContainer<TData> o` and using o.Data.
             return EqualityComparer<ConcretBaseType>.Default.Equals(this.ContainsType, dataRecordContainer.ContainsType) &&
                    EqualityComparer<TData>.Default.Equals(this.Data, dataRecordContainer.GetData<TData>());
         }

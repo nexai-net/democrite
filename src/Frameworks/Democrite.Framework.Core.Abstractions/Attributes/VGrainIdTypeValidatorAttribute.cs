@@ -69,6 +69,7 @@ namespace Democrite.Framework.Core.Abstractions.Attributes
             else if (s_isPrimaryInteger)
             {
                 str.Append("Primary [Long]");
+                //TO-DO from Opus 5.5 Invalid regex quantifier with space : In .NET "{1, 18}" (with a space) is not a quantifier but literal text, so integer-keyed grain ids never validate. Use "([0-9]{1,18})".
                 regex.Append("([0-9]{1, 18})");
             }
             else if (s_isPrimaryString)

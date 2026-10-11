@@ -23,6 +23,7 @@ namespace Democrite.Framework.Builders
             ArgumentNullException.ThrowIfNull(parentSignal);
             ArgumentNullException.ThrowIfNullOrEmpty(simpleNameIdentifier);
 
+            //TO-DO from Opus 5.5 Null displayName yields 'parent:' name : With the default displayName = null and contactToParentName = true, the display name becomes 'parentName:' with an empty suffix (same at line 41). Use `displayName ?? simpleNameIdentifier` before concatenating. Also rename the misspelled 'contactToParentName' parameter to 'concatToParentName'.
             return Signal.StartBuilding(simpleNameIdentifier, contactToParentName ? parentSignal.Name + ":" + displayName : displayName, uid)
                          .Parent(parentSignal);
         }

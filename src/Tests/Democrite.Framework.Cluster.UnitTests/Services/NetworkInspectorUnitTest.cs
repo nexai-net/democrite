@@ -23,6 +23,7 @@ namespace Democrite.Framework.Cluster.UnitTests.Services
         [Theory]
         [InlineData("135.256.32.1", "135.256.32.1", false)]
         [InlineData("135.145.32.1:4256", "135.145.32.1:4256", true)]
+        //TO-DO from Opus 5.5 Test depends on machine DNS resolution : The test expects 'localhost' to resolve to exactly one address, 127.0.0.1, but hosts with IPv6 enabled may return ::1 or several addresses, so it is environment-dependent. Inject a resolver abstraction, or assert that the result contains a loopback address.
         [InlineData("localhost:4256", "127.0.0.1:4256", false)]
         public void SolveHostAddresse_Resolve(string hostName, string? expected, bool ipEndpointParsed)
         {

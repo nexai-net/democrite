@@ -49,6 +49,7 @@ namespace Democrite.Framework.Core.Abstractions.Inputs
         /// <inheritdoc />
         protected override bool OnEquals(DataSourceDefinition other)
         {
+            //TO-DO from Opus 5.5 Equality checks wrong type and member : OnEquals tests for DataSourceFixValueDefinition and compares Access to its Value, so two identical convert definitions are never equal. Test for DataSourceConvertValueDefinition<TData> and compare Access with otherTyped.Access.
             return other is DataSourceFixValueDefinition<TData> otherTyped &&
                    this.Access.Equals(otherTyped.Value);
         }

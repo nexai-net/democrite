@@ -64,6 +64,7 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
                     if (inst.IsLoaded == false)
                     {
                         inst.Loaded -= EnabledAdorner;
+                        //TO-DO from Opus 5.5 Overlay never removed, Loaded handler leaks : The Loaded handler is never unsubscribed, so every reload (tab switch, re-templating) adds another adorner. Setting Enabled=false does nothing, so the overlay cannot be removed. Unsubscribe inside EnabledAdorner, track the adorner (for example in an attached property), and remove it when Enabled becomes false.
                         inst.Loaded += EnabledAdorner;
                         return;
                     }

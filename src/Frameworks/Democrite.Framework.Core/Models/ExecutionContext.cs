@@ -46,6 +46,7 @@ namespace Democrite.Framework.Core.Models
         private static readonly MethodInfo s_addGrainCancelReference;
         private static readonly PropertyInfo s_propGrainRuntime;
 
+        //TO-DO from Opus 5.5 Mutable HashSet inside [Immutable] context : The class is marked [Immutable], so Orleans shares the same instance without copying between local grains, yet TryPushContextData and ClearContextData mutate this non-thread-safe HashSet. That causes cross-grain data leaks and races. Make the container immutable (ImmutableHashSet with copy-on-write) or remove [Immutable].
         private readonly HashSet<IContextDataContainer> _contextDataContainers;
 
         [NonSerialized]
@@ -345,6 +346,7 @@ namespace Democrite.Framework.Core.Models
         /// <inheritdoc cref="IExecutionContext.GetLogger{T}(ILoggerProvider)" />
         private static ILogger GetLogger(ILoggerFactory loggerFactory, Guid flowUid, Guid currentExecutionId, string category)
         {
+            //TO-DO from Opus 5.5 Unbounded logger cache per execution : LoggerFactory caches one logger per category name forever, and this category contains a unique flow id and execution id, so every execution adds a permanent entry and memory grows without bound. Use a stable category (the type name) and put flow and execution ids in a logging scope or as structured properties.
             return loggerFactory.CreateLogger(string.Format("[Flow {0}][VGrain {1} - {2}]", flowUid, currentExecutionId, category));
         }
 
@@ -354,6 +356,7 @@ namespace Democrite.Framework.Core.Models
             ArgumentNullException.ThrowIfNull(this._grainCancelToken, "IExecutionContextInternal.AddCancelGrainReference(GrainReference grainRef) must be call before any other call");
             //Task.Run(async () => await GrainTokenCancel(this._grainCancelToken));
 
+            //TO-DO from Opus 5.5 Cancel ignores returned Task, reflects each call : GrainCancellationToken.Cancel returns a Task that propagates cancellation to remote grains, but it is discarded, so failures are lost and the ValueTask completes before cancellation propagates. The MethodInfo is also looked up on every call. Cache the method, or fix the unused UnsafeAccessor, and await the returned Task.
             var cancel = typeof(GrainCancellationToken).GetMethod("Cancel", BindingFlags.NonPublic | BindingFlags.Instance);
             cancel!.Invoke(this._grainCancelToken, new object[0]);
             return ValueTask.CompletedTask;

@@ -98,6 +98,7 @@ namespace Democrite.Framework.Node.Services
 
                 if (!this._signalSubscribe.TryGetValue(signalId.Uid, out subscriptionIdTask))
                 {
+                    //TO-DO from Opus 5.5 Faulted subscription cached forever : The subscribe Task is cached before it completes. If it faults, every later subscriber reuses the faulted task and the signal is never relayed. Await the task (or check it is faulted) and evict it on failure.
                     subscriptionIdTask = this._signalLocalGrainServiceRelayClient.Subscribe(signalId);
                     this._signalSubscribe.Add(signalId.Uid, subscriptionIdTask);
                 }
@@ -148,6 +149,7 @@ namespace Democrite.Framework.Node.Services
                 }
 
                 //// Attention to dead lock
+                //TO-DO from Opus 5.5 Unsubscribe is fire-and-forget and can leak : The Unsubscribe task is discarded, so errors are lost and ConfigureAwait does nothing. When the subscription task is still pending, the remote subscription is never removed (see the TODO). Chain the unsubscribe on the subscription task and log faults.
                 var subscritionIdTask = this._signalLocalGrainServiceRelayClient.Unsubscribe(unsubscribeTask.Result);
                 subscritionIdTask.ConfigureAwait(false);
             }

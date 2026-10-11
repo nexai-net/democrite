@@ -108,6 +108,7 @@ namespace Democrite.Framework.Core.Executions
         {
             var specialisedMethod = s_genericCallMethod.MakeGenericMethod(expectedOutput);
 
+            //TO-DO from Opus 5.5 Invalid ValueTask cast always throws : s_genericCallMethod resolves RunAsync<T>(CancellationToken), which returns Task<IExecutionResult<T>>, so casting the boxed result to ValueTask always throws InvalidCastException and IExecutionLauncher.RunAsync(Type, ...) can never succeed. Cast to Task instead (as ExecutionRefLauncher does), then await it and read the result.
             var result = (ValueTask)specialisedMethod.Invoke(this, new object[] { token })!;
 
             var task = result.AsTask();
@@ -189,6 +190,7 @@ namespace Democrite.Framework.Core.Executions
                 token.ThrowIfCancellationRequested();
 
                 // Link cancel event to orlean grain cancel system
+                //TO-DO from Opus 5.5 Undisposed registration keeps execution context alive : The registration is never disposed, so a long-lived caller token roots every ExecutionContext and launcher ever run with it, and can cancel finished executions later. The ValueTask returned by Cancel() is also dropped. Dispose the registration after awaiting the execution.
                 token.Register((ctx) => (ctx as IExecutionContext)?.Cancel(), executionContext, useSynchronizationContext: false);
 
                 executionTask = OnRunAsync<TExpectedOutput>(executor, input, executionContext, fire);

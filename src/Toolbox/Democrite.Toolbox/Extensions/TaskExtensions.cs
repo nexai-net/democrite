@@ -146,6 +146,7 @@ namespace System.Threading.Tasks
         {
             logger ??= NullLogger.Instance;
 
+            //TO-DO from Opus 5.5 ValueTasks consumed multiple times : Each ValueTask is converted with AsTask() here and then read again in AggregateResults (IsCompletedSuccessfully, Result, AsTask().Exception). A ValueTask backed by an IValueTaskSource may only be consumed once, so this gives undefined results. Convert each ValueTask to a Task once and reuse those Tasks (the same issue appears at lines 234-266).
             await SafeWhenAllAsync(tasks.Select(t => t.AsTask()).ToReadOnly(), token);
 
             return await AggregateResults<TData>(tasks, logger);

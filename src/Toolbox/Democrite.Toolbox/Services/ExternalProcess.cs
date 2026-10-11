@@ -119,6 +119,7 @@ namespace Democrite.Toolbox.Services
 
                     this._process.EnableRaisingEvents = true;
 
+                    //TO-DO from Opus 5.5 Process started twice, first one orphaned : Process.Start(info) already launches the process, and the instance Start() call then closes that handle and launches a second process. The first process is left running untracked, and its redirected output is never read, so it can block on a full pipe. Remove the second Start() call, or build the Process with new Process { StartInfo = info } and call Start() only once.
                     if (!this._process.Start())
                     {
                         throw new InvalidOperationException("Process couldn't start");
@@ -129,6 +130,7 @@ namespace Democrite.Toolbox.Services
 
                     var processTask = this._process.WaitForExitAsync(cancellationToken);
 
+                    //TO-DO from Opus 5.5 Cancellation reads ExitCode of running process : If the token is cancelled, WaitForExitAsync finishes while the process is still running, so _process.ExitCode throws inside the continuation. The process is never killed or disposed, and _process is cleared without the lock. On cancellation kill the process, then dispose it and set the fields under lock(_info).
                     processTask = processTask.ContinueWith(t =>
                     {
                         this.ExitCode = this._process.ExitCode;

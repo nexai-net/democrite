@@ -164,6 +164,7 @@ namespace Democrite.Framework.Core.Abstractions.Models
         /// <summary>
         /// Initializes a new instance of the <see cref="EtagDefinitionContainer{TDefinition}"/> class.
         /// </summary>
+        //TO-DO from Opus 5.5 Random 32-bit etag ignores content : The etag is 8 hex chars of a new Guid, so identical definitions get different etags (false change detection) and collisions are possible. Derive the etag from a content hash of the definition.
         public EtagDefinitionContainer(TDefinition definition)
             : base(definition.Uid,
                    new string(Guid.NewGuid().ToString().Replace("-", "").Take(8).ToArray()),

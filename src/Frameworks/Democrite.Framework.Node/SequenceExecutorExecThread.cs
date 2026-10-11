@@ -484,6 +484,7 @@ namespace Democrite.Framework.Node.Models
                     ArgumentNullException.ThrowIfNull(this._currentStage);
 
                     // Force in another thread to ensure GetSecurityThreadHandler will not dead lock
+                    //TO-DO from Opus 5.5 Post-process failures silently swallowed : ContinueWith(EndPostProcess) always completes successfully and ignores a faulted or cancelled post-process. A failed foreach aggregation therefore lets the sequence continue with a stale _nextStageInput. Await the post-process directly and call State.SetError on failure, or rethrow t.Exception in EndPostProcess.
                     return Task.Factory.StartNew(async () => await tmp(this._currentStage, GetSecurityThreadHandler)
                                                                                 .ContinueWith(EndPostProcess))
                                        .Unwrap();

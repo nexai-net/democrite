@@ -116,6 +116,7 @@ namespace Democrite.Framework.Node.Blackboard.Models
             /// <inheritdoc />
             int IComparer<BlackboardLogicalTypeHandler>.Compare(BlackboardLogicalTypeHandler? x, BlackboardLogicalTypeHandler? y)
             {
+                //TO-DO from Opus 5.5 SortedSet drops handlers with equal Order : _logicalHandlers is a SortedSet using this comparer, so two logical types with the same Order (an explicit Order() collision, or the default -1) compare as equal and the second is silently dropped, together with its rules and storage. Break ties, for example by pattern string, or use a sorted List.
                 return (x?.Order ?? -2) - (y?.Order ?? -2);
             }
 
@@ -186,6 +187,7 @@ namespace Democrite.Framework.Node.Blackboard.Models
                 return;
 
             // Storage change
+            //TO-DO from Opus 5.5 Synchronous semaphore wait on grain scheduler : Update() blocks the activation thread on a SemaphoreSlim that RepositoryPreparationAsync holds across awaits. With [AlwaysInterleave] reads in flight, the holder's continuation needs the blocked scheduler, which can deadlock. Make Update async and use WaitAsync.
             this._asyncGetLocker.Wait();
             try
             {

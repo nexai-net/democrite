@@ -111,6 +111,7 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
             if (object.ReferenceEquals(other, this))
                 return true;
 
+            //TO-DO from Opus 5.5 Trigger equality ignores subclass data : There is no OnEquals/OnGetHashCode hook and Cron/Stream/Signal triggers don't override Equals, so two cron triggers with different expressions (or RefId) compare equal and updates are not detected. Add abstract OnEquals/OnGetHashCode and include RefId.
             return this.Uid == other.Uid &&
                    this.Enabled == other.Enabled &&
                    this.TriggerType == other.TriggerType &&

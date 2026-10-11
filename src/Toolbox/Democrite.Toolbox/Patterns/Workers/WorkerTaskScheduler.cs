@@ -163,6 +163,7 @@ namespace Democrite.Toolbox.Patterns.Workers
             {
                 if (this.ExecTask == null)
                 {
+                    //TO-DO from Opus 5.5 Pre-cancelled start leaves completion source pending : If the token is already cancelled, StartNew never runs the lambda, so _completionSource is never completed and ExecTask callers wait forever. Use Task.Factory.StartNew(..., CancellationToken.None, ...), or add a continuation that calls TrySetCanceled on the completion source.
                     this.ExecTask = Task.Factory.StartNew(async () =>
                     {
                         try
@@ -200,6 +201,7 @@ namespace Democrite.Toolbox.Patterns.Workers
             try
             {
                 if (maximumConcurrencyLevel < 1)
+                    //TO-DO from Opus 5.5 Default concurrency becomes 0 on small machines : With 1 or 2 cores, ProcessorCount / 3.0 truncates to 0. The scheduler then never runs any task, and PushTaskWhenAvailableSlotAsync waits forever. Clamp the value with Math.Max(1, ...).
                     maximumConcurrencyLevel = (uint)(Environment.ProcessorCount / 3.0);
 
                 this._maximumConcurrencyLevel = maximumConcurrencyLevel;
@@ -386,6 +388,7 @@ namespace Democrite.Toolbox.Patterns.Workers
 
                     try
                     {
+                        //TO-DO from Opus 5.5 Batch barrier: one slow task blocks all slots : The loop waits for the whole batch to finish before pulling new work, so a single long task leaves the other N-1 slots idle. The empty catch below also hides failures. Refill slots as tasks finish (Task.WhenAny or a SemaphoreSlim-based worker loop), and log the exceptions.
                         await workToDo.Select(w => w.ValueRef.ExecuteAsync(this._lifeToken.Token))
                                       .ToArray()
                                       .SafeWhenAllAsync(this._lifeToken.Token);

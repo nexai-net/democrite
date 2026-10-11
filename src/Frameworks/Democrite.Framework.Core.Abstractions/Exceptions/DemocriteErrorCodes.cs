@@ -108,6 +108,7 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
             /// Error code category data
             /// </summary>
             [Description("Error code category Data")]
+            //TO-DO from Opus 5.5 Duplicate category value Storage/Data : Categories.Data has the same value as Categories.Storage (0x11), so error codes cannot be distinguished and Enum.GetName returns the wrong name. Give Data a unique value (and check Query/Entity ordering).
             Data = 0x_11_00_00_00_00_00_00_00,
 
             /// <summary>
@@ -179,6 +180,7 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
             /// Error about input information
             /// </summary>
             [Description("Error about input information.")]
+            //TO-DO from Opus 5.5 PartType values overlap ErrorType bit range : PartType Input..Deferred are encoded in the third byte (GenericMask), not the MacroTypeMask byte, so they collide with ErrorType (e.g. Input == NotInitialized, and Input|Invalid == Output). Move them to 0x_00_09_.., 0x_00_0A_.. etc.
             Input = 0x_00_00_09_00_00_00_00_00,
 
             /// <summary>
@@ -294,6 +296,7 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
 #pragma warning restore IDE0049 // Simplify Names
         {
 #pragma warning disable CS0675 // Bitwise-or operator used on a sign-extended operand
+            //TO-DO from Opus 5.5 Negative custom code corrupts error code : A negative Int32 customErrorCode is sign-extended to ulong (CS0675 suppressed), setting all category/macro/generic bits. Mask it: ((ulong)(uint)(customErrorCode ?? 0)) & CustomErrorCodeMask.
             return (ulong)category |
                    (ulong)macro |
                    (ulong)genericType |

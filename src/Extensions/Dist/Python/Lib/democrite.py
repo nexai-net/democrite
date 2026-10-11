@@ -68,6 +68,7 @@ def democrite_verbose_print(message:str, level:VerboseLevel, expectedLevel:Verbo
 
 def democrite_any_to_base_64_string(data:any):
     data_str = data
+    #TO-DO from Opus 5.5 Identity check against object never true : 'data is object' compares identity with the builtin class and is always False, so dicts and lists are sent as str() Python repr (single quotes, True/None) that the .NET side cannot parse as JSON; the same bug is at line 241 in _remoteLogger.log. Use 'if not isinstance(data, str): data_str = json.dumps(data)'.
     if (data is object):
         data_str = json.dumps(data)
     else:
@@ -90,6 +91,7 @@ class _remoteCommandServer:
             finalData += codecs.utf_8_encode(result)[0] 
 
         fullFinalData = struct.pack("H", len(finalData)) + finalData
+        #TO-DO from Opus 5.5 Concurrent partial socket sends corrupt frames : Responses and logs are sent from several ThreadPoolExecutor threads with no lock, and socket.send may write only part of the buffer, so frames can interleave or be truncated. Guard the send with a threading.Lock and use sendall.
         self._socket.send(fullFinalData)
 
     def __private__executeCommand_async(self, msgid:str, compressedCmd:str):
@@ -125,6 +127,7 @@ class _remoteCommandServer:
 
                 pkgSize = int(struct.unpack("H", pkgSizeArrayBytes)[0]);
 
+                #TO-DO from Opus 5.5 Single recv treated as full TCP frame : TCP recv may return fewer bytes than requested (this also applies to the 2-byte header), and a short read currently breaks the loop and stops the server. Add a recv_exact helper that loops until pkgSize bytes are read, and use explicit network byte order ('!H') in both pack and unpack so the length is not limited by native byte order.
                 containerData = self._socket.recv(pkgSize)
                 if (len(containerData) < pkgSize):
                     break;
@@ -373,6 +376,7 @@ class vgrain:
     def execute(self, func: execFunc) -> None:
         """ Execute the command pass by command line arguments in oneshot """
 
+        #TO-DO from Opus 5.5 Missing --cmd raises AttributeError : self._command is only assigned when a '--cmd:' argument exists, so this check raises AttributeError instead of the intended KeyError. Also, remainConfig.index('=') at line 333 raises ValueError instead of returning -1, which makes the '< 0' check dead. Initialize self._command = None in __init__ and use str.find.
         if self._command is None:
             raise KeyError("Command not found, ensure the command is pass using --cmd:'CMD_JSON_BASE64'")
 

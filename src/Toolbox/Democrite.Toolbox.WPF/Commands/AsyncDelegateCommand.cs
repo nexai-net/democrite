@@ -55,6 +55,7 @@ namespace Democrite.Toolbox.WPF.Commands
         /// <inheritdoc />
         public override void Execute(object? parameter)
         {
+            //TO-DO from Opus 5.5 Async command runs off UI thread, fire-and-forget : Execute pushes the callback to the thread pool, so callbacks touching UI-bound state run off the dispatcher. IsRunning is only set once the task starts, and CanExecuteChanged is never raised, so the button stays enabled and double execution is possible. Call StartRunningScope synchronously, run the callback via the dispatcher context, and refresh CanExecute around execution.
             Task.Run(async () =>
             {
                 StartRunningScope();

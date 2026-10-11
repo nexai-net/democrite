@@ -76,6 +76,7 @@
         /// <summary>
         /// Gets the gpu requirement.
         /// </summary>
+        //TO-DO from Opus 5.5 GPU requirement is never applied : GPURequirement is set by the builder's UseGpu() and included in equality checks, but DockerExternalProcess never adds HostConfig.DeviceRequests, so GPU containers run without a GPU. Map it to DeviceRequests (Driver 'nvidia', Count -1 or the configured device IDs) when the container is created. The private _fullImageName field is also computed but never used.
         [DataMember]
         public string? GPURequirement { get; }
 

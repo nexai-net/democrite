@@ -95,6 +95,7 @@ namespace Democrite.Framework.Extensions.Mongo.Abstractions
 
             try
             {
+                //TO-DO from Opus 5.5 ObjectSerializer allows any type (unsafe deserialization) : Registering ObjectSerializer with an allow-all predicate turns off the MongoDB driver's protection against deserializing an arbitrary type named in the '_t' discriminator, so anyone who can write to the database gets a gadget-chain attack path. Limit the allowed types to Democrite/application assemblies (for example ObjectSerializer.DefaultAllowedTypes plus a namespace allow-list).
                 BsonSerializer.TryRegisterSerializer(new ObjectSerializer(t => true));
             }
             catch

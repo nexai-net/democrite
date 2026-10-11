@@ -77,6 +77,7 @@ namespace Democrite.Framework.Core.Abstractions
             }
             finally
             {
+                //TO-DO from Opus 5.5 Pooled loggers reused without clearing : InMemoryLogger has no reset, so a pooled logger keeps all previous logs: later validations report errors from other definitions and each logger grows unboundedly. Clear the logger before re-enqueuing or create a new one per call.
                 if (logger is not null && s_loggerPool.Count < short.MaxValue)
                     s_loggerPool.Enqueue(logger);
             }

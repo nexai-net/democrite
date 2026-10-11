@@ -54,6 +54,7 @@ namespace Democrite.VGrains.Web
         {
             using (var client = this._httpClientFactory.CreateClient())
             {
+                //TO-DO from Opus 5.5 Unbounded, unchecked HTTP fetch (SSRF risk) : Any input URL is fetched, including internal or metadata endpoints, with no cancellation token, no size limit and no status check, and the HttpResponseMessage is not disposed. Pass executionContext.CancellationToken, wrap the response in using, call EnsureSuccessStatusCode, cap the content length and validate the scheme and host against an allow-list.
                 var pageRawResponse = await client.GetAsync(pageUrl);
 
                 var contentString = await (pageRawResponse.Content?.ReadAsStringAsync() ?? Task.FromResult(string.Empty));

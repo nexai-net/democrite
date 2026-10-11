@@ -235,6 +235,7 @@ namespace Democrite.Framework.Node.Blackboard
                         var uid = blackboardId.Uid;
 
                         // Attention : In Theory could override a target
+                        //TO-DO from Opus 5.5 Proxy cache grows without bound : Proxies are cached by uid and by name forever, with no eviction on unregister or seal, so a long-running silo that creates many boards leaks memory and can return stale proxies. Add eviction (bounded or time-based cache, or removal on unregister).
                         _blackboardProxies[uid] = newProxy;
                         _blackboardProxiesByName[keys] = newProxy;
 

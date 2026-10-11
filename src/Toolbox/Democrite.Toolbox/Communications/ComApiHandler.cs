@@ -140,6 +140,7 @@ namespace Democrite.Toolbox.Communications
 
             public void OnError(Exception error)
             {
+                //TO-DO from Opus 5.5 Observer OnError throws NotImplementedException : Any error raised by the client proxy observable throws inside Rx and can tear down the subscription or crash the calling thread. Implement it by failing the pending requests with the error, as ClientProxy_ClientLeavedEvent already does.
                 throw new NotImplementedException();
             }
 
@@ -230,6 +231,7 @@ namespace Democrite.Toolbox.Communications
 
             await SendImpl(message, route, token, forceMessageId);
 
+            //TO-DO from Opus 5.5 SendRequest can hang forever, entry leaks : The token is not applied while waiting for the response, so a lost reply blocks the caller indefinitely and the _waitingRequestResult entry is never removed. Use waitingResult.Task.WaitAsync(token) with a default timeout, and remove the entry in a finally block.
             return await waitingResult.Task;
         }
 

@@ -140,6 +140,7 @@ namespace Democrite.Framework.Extensions.Mongo.Services
         /// <inheritdoc />
         public override async ValueTask<(bool Success, TDocumentType? Result)> TryGetDataAsync(Guid key, CancellationToken token)
         {
+            //TO-DO from Opus 5.5 TryGetDataAsync crashes when one source misses : Every source's (false, null) tuple is passed to Merge, where get = d => d.Result! dereferences d.doc.Uid and throws a NullReferenceException as soon as one source lacks the key; FirstOrDefault can also return a failed tuple while another source succeeded. Filter on Success before merging, and return (false, default) when nothing is found.
             var results = await ApplyMulti<(bool Success, TDocumentType? Result)>(async src =>
             {
                 var doc = await src.TryGetDataAsync(key, token);

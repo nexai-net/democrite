@@ -63,6 +63,7 @@ namespace Democrite.Toolbox.Converters
             var localObjectType = objectType;
             var localExistingValue = existingValue;
 
+            //TO-DO from Opus 5.5 Non-deterministic rule order; Equals/GetHashCode mismatch : A FrozenDictionary does not keep insertion order, so when several conditions match, which subtype wins is undefined. GetHashCode also hashes the dictionary by reference while Equals compares content. Store the rules in an ordered list, and compute the hash from the content (or drop the custom equality).
             var propCond = this._props.FirstOrDefault(p => p.Value.Validate(getJsonValue, localObjectType, localExistingValue));
 
             if (propCond.Key is not null)

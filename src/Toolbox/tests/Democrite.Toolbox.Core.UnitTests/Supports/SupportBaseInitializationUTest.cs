@@ -89,6 +89,7 @@ namespace Democrite.Toolbox.UnitTests.Supports
             var task = inst.InitializationAsync(42);
 
             // Wait to be sure the completion task is waiting
+            //TO-DO from Opus 5.5 Fixed sleep to reach initializing state : Both EnsureOnlyOneCall tests wait 1 s and assume initialization has started. This is slow and can still fail on a loaded CI agent. Have the init delegate signal a TaskCompletionSource when it is entered and await that before asserting IsInitializing (the same applies at line 134).
             await Task.Delay(1000);
 
             Check.That(inst.IsInitializing).IsTrue();

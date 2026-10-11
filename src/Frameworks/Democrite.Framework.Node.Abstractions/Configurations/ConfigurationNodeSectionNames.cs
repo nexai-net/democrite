@@ -63,6 +63,7 @@ namespace Democrite.Framework.Configurations
         /// <summary>
         /// The section configuring auto key for all memory when misisin
         /// </summary>
+        //TO-DO from Opus 5.5 Missing section separator in config key : Unlike NodeDefaultMemoryAutoConfigKey, this constant joins the parts with no SectionSeparator and so builds a wrong key such as '...:DefaultAutoConfig'. DemocriteNodeBuilder reads it at two places, so the default-memory auto-config section is never found. Add the separator, or remove this duplicate and use NodeDefaultMemoryAutoConfigKey.
         public const string NodeMemoryDefaultAutoConfigKey = NodeDefaultMemory + ConfigurationSectionNames.AutoConfigKey;
 
         /// <summary>

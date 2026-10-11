@@ -99,6 +99,7 @@ namespace Democrite.Framework.Builders
                 s_definitionSchema = JSchema.Parse(reader.ReadToEnd());
             }
 
+            //TO-DO from Opus 5.5 YAML alias expansion and unbounded input : The YAML is deserialized to an object graph and re-serialized to JSON, so anchors and aliases are expanded (billion-laughs style), and there is no limit on input size or depth for definitions that may come from external sources. Reject aliases with a custom parser or event filter, enforce a maximum content length, and limit JSON depth (JsonLoadSettings / MaxDepth).
             s_yamlDeserializer = new DeserializerBuilder().WithAttemptingUnquotedStringTypeDeserialization()
                                                           .Build();
 
@@ -355,6 +356,7 @@ namespace Democrite.Framework.Builders
                             }
                             else
                             {
+                                //TO-DO from Opus 5.5 Adding JValue to JObject throws : When an 'output' entry such as 'static' has a scalar value, clone is a JValue, and JObject.Add(JValue) throws ArgumentException, so the user gets an obscure crash instead of a validation error. Reject non-object values with a clear InvalidDataException, or wrap the value in a named JProperty.
                                 prop.Parent.Add(clone);
                             }
                             prop.Remove();
@@ -491,6 +493,7 @@ namespace Democrite.Framework.Builders
                                                      ids => (triggerFinalizer ?? trigger).AddTargetSequences(ids));
             }
 
+            //TO-DO from Opus 5.5 'At least one target' check is ineffective : ApplyTarget always calls record(...), even with an empty id array, and AddTargetXxx returns the builder. So triggerFinalizer is never null when a 'targets' node exists, and a trigger with no real target compiles. Check the number of resolved ids, or the builder's Targets count, instead.
             if (triggerFinalizer is null)
                 throw new InvalidDataException("A trigger must have at least ONE target");
 
@@ -509,6 +512,7 @@ namespace Democrite.Framework.Builders
                                         .Select(s => SolveDefinitionReference(s, refType, ctx))
                                         .ToArray();
 
+            //TO-DO from Opus 5.5 ValueTask instances consumed more than once : SafeWhenAllAsync converts each ValueTask with AsTask(), and the code then reads IsCompletedSuccessfully and .Result on the same ValueTask. Consuming a ValueTask more than once is undefined behaviour. The Where(IsCompletedSuccessfully) filter is also dead code because faults already throw. Convert to Task once (`.Select(...).Select(v => v.AsTask()).ToArray()`), await Task.WhenAll and use its results, passing ctx.CancellationToken.
             await signalTargetTasks.SafeWhenAllAsync();
             var signalTargets = signalTargetTasks.Where(s => s.IsCompletedSuccessfully)
                                                  .Select(s => s.Result)
@@ -639,6 +643,7 @@ namespace Democrite.Framework.Builders
                 method = method.MakeGenericMethodFromParameters(new Type[] { inpuArgType, execConfigType });
 
             var displayName = useStepDef.Use + "." + useStepDef.Call;
+            //TO-DO from Opus 5.5 Methods with more than two parameters mis-bound : Only the 1-parameter (ctx) and 2-parameter (input, ctx) shapes are handled. A method with three or more parameters silently gets only the context argument and fails at runtime. Reject such methods explicitly at compile time with a clear error, or bind the extra parameters.
             if (mthParameters.Length == 2)
             {
                 if (NoneType.IsEqualTo<TInput>())
@@ -709,6 +714,7 @@ namespace Democrite.Framework.Builders
                 var valueTypeRef = await this._solverService.GetReferenceTypeAsync(valueType);
 
                 if (valueTypeRef is null)
+                    //TO-DO from Opus 5.5 Error message prints null; Item1 unchecked : The message formats valueTypeRef, which is always null in this branch, instead of the requested ref valueType. Also, valueTypeRef.Item1 is not null-checked before MakeGenericType, and staticColl.Values may be null. Report valueType, and check Item1 and Values (as ComputeSequence does).
                     throw new KeyNotFoundException(string.Format("Data type not founded ref: {0}", valueTypeRef));
 
                 var listValues = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericTypeWithCache(valueTypeRef.Item1))!;
@@ -788,6 +794,7 @@ namespace Democrite.Framework.Builders
 
                 if (!added)
                 {
+                    //TO-DO from Opus 5.5 Culture-dependent number parsing in YAML args : double.TryParse uses the current culture, so '1.5' fails on a fr-FR host and becomes a string, while '1,5' is accepted. The same YAML compiles differently from one node to another. Pass NumberStyles.Float with CultureInfo.InvariantCulture.
                     if (double.TryParse(paramSpan, out var number))
                     {
                         result.Add((typeof(double), Expression.Constant(number), false));
@@ -946,6 +953,7 @@ namespace Democrite.Framework.Builders
                 if (output?.Item1 == null)
                     throw new KeyNotFoundException("Type not found " + outputType);
 
+                //TO-DO from Opus 5.5 Constructor matching indexes args out of range : The predicate calls args[i] for each constructor parameter. A constructor with more parameters than args throws IndexOutOfRangeException, and one with fewer parameters matches and then makes Expression.New fail. Exact type equality also never matches numeric args (always parsed as double). Filter on `c.GetParameters().Length == args.Count` first and use assignability or conversion instead of equality.
                 var ctor = output.Item1.GetConstructors(BindingFlags.Instance | BindingFlags.Public)
                                        .FirstOrDefault(c => c.GetParameters().Select((p, i) => ParameterMatch(p, args[i])).All(v => v));
 

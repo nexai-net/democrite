@@ -139,6 +139,7 @@ namespace Democrite.Framework.Core.Services
 
             using (await this._deferredLocker.LockAsync())
             {
+                //TO-DO from Opus 5.5 Deferred status dictionary grows unbounded : Every broadcast status is stored, but entries are only removed on Cleanup when an awaiting task exists, so statuses of deferred works this client never awaits accumulate forever. Handle Cleanup regardless of _awaitingTasks, and remove completed entries once the result is delivered.
                 this._deferredStatus[deferredId] = statusChangeMessage;
 
                 if (this._awaitingTasks.TryGetValue(deferredId, out var pendingTask))
@@ -158,6 +159,7 @@ namespace Democrite.Framework.Core.Services
 
             if (requiredResponse is not null)
             {
+                //TO-DO from Opus 5.5 Fire-and-forget loses deferred fetch failures : Invoke returns the Task from FetchTaskResponseAsync, but nothing awaits it. Any failure in ConsumeDeferredResponseAsync is unobserved and the awaiting TaskCompletionSource never completes, so the caller hangs. Await the returned Task, and call TrySetException on requiredResponse in a catch block.
                 s_fetchGenericTaskResponse.MakeGenericMethod((Type)requiredResponse.State!).Invoke(this, new object?[] { statusChangeMessage, requiredResponse });
             }
         }
@@ -226,6 +228,7 @@ namespace Democrite.Framework.Core.Services
                 }
                 else
                 {
+                    //TO-DO from Opus 5.5 Awaiter hangs if deferred already finished : If the Finished/Failed notification arrives before GetDeferredWorkAwaiterAsync registers (a race on fast work), a new TCS is created that nobody will ever complete (Failed is a TODO). When the stored status is terminal, fetch the response immediately instead of waiting.
                     if (this._deferredStatus.TryGetValue(id, out var deferredStatusMessage))
                     {
                         if (deferredStatusMessage.Status == DeferredStatusEnum.Cancelled)
@@ -240,6 +243,7 @@ namespace Democrite.Framework.Core.Services
                 }
             }
 
+            //TO-DO from Opus 5.5 Cancellation registration leaked and blocks synchronously : The CancellationTokenRegistration is never disposed, so it stays rooted on long-lived tokens after the task completes, and the callback blocks synchronously on a SemaphoreSlim. Dispose the registration when the task completes, and use a non-blocking lock or a ConcurrentDictionary.
             token?.Register(uid =>
             {
                 var deferredTaskUid = (Guid)uid!;

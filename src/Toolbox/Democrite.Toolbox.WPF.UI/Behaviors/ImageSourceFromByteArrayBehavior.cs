@@ -32,6 +32,7 @@ namespace Democrite.Toolbox.WPF.UI.Behaviors
         /// </summary>
         public IList<byte>? Data
         {
+            //TO-DO from Opus 5.5 Data getter casts IList<byte> to byte[] : The DP is declared as IList<byte> but the getter casts to byte[], so binding a List<byte> throws InvalidCastException, including inside the change callback (`inst.Data!.ToArray()`). Cast to IList<byte>. Also null-check AssociatedObject in the callback, since it can run before attach.
             get { return (byte[]?)GetValue(DataProperty); }
             set { SetValue(DataProperty, value); }
         }

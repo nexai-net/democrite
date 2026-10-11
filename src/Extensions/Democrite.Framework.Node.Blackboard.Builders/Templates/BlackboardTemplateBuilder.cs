@@ -82,6 +82,7 @@ namespace Democrite.Framework.Node.Blackboard.Builders.Templates
         {
             get
             {
+                //TO-DO from Opus 5.5 Property getter resets controller configuration : Reading Storage, Event or State replaces the registered builder with a fresh one that has no controller, so a read without UseController (even from a debugger) makes Build() throw ArgumentNullException. Expose these as methods, or reuse the existing builder.
                 var storageControllerBuilder = new BlackboardTemplateStorageControllerBuilder(this);
                 this._storageControllers[BlackboardControllerTypeEnum.Storage] = storageControllerBuilder;
                 return storageControllerBuilder;
@@ -179,6 +180,7 @@ namespace Democrite.Framework.Node.Blackboard.Builders.Templates
         /// <inheritdoc />
         public IBlackboardTemplateFinalizerBuilder AnyLogicalTypeConfiguration(Action<ILogicalTypeConfiguration>? cfg = null)
         {
+            //TO-DO from Opus 5.5 AnyLogicalTypeConfiguration ignores its cfg callback : The `cfg` delegate is never invoked, so rules configured for the catch-all logical type are silently discarded. Build a LogicalTypeConfiguration(".*"), invoke cfg on it and add its rules.
             this._anyLogicalType = true;
             return this;
         }

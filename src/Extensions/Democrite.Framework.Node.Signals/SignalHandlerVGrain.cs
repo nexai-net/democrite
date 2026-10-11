@@ -67,6 +67,7 @@ namespace Democrite.Framework.Node.Signals
         [ReadOnly]
         public async Task<Guid> Fire(Guid fireId, GrainId? sourceId, VGrainMetaData? sourceMetaData, GrainCancellationToken token)
         {
+            //TO-DO from Opus 5.5 Early return skips parent signal relay : When the child signal has no direct subscribers, Fire returns before RelayToParent, so subscribers of the parent signal are never notified (the same issue is in the generic Fire<TData> at line 95). Skip only the local FireSignal call and always relay to _parentSignalHandler.
             if (this.State is not null && this.State.HasSubscriptions == false)
                 return fireId;
 

@@ -34,6 +34,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <!--TO-DO from Opus 5.5 PrivateAssets hides public API dependency : PrivateAssets="all" removes Core.Abstractions from the Core NuGet dependencies, although Core's public API exposes its types, so package consumers hit missing-type errors. Remove PrivateAssets here. Bag.DebugTools.csproj line 18 has the same problem on its Core reference.-->
 	  <ProjectReference Include="..\Democrite.Framework.Core.Abstractions\Democrite.Framework.Core.Abstractions.csproj" PrivateAssets="all" />
 	</ItemGroup>
 

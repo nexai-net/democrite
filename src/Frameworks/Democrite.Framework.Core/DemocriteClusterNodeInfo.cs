@@ -57,6 +57,7 @@ namespace Democrite.Framework.Core
                                    .Append(Assembly.GetExecutingAssembly())
                                    .NotNull()
                                    .SelectMany(a => a.GetReferencedAssemblies()
+                                                     //TO-DO from Opus 5.5 Static ctor can throw TypeInitializationException : Assembly.Load on every referenced assembly inside a static constructor throws if any reference is missing (common with optional dependencies), which makes the type permanently unusable. Wrap each load in try/catch, or use AppDomain.GetAssemblies(), and subscribe to AssemblyLoad before taking the snapshot to avoid missing assemblies.
                                                      .Select(r => Assembly.Load(r))
                                                      .Append(a))
                                    .Distinct()

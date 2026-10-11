@@ -183,6 +183,7 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Messenger
                     service.Push<TMesssage>(msg, pushCategory);
                 }
 
+                //TO-DO from Opus 5.5 Polling loop with fixed delays : The test polls messageReceived.Count outside the lock every 100 ms, then sleeps a fixed 1 s twice, which makes it slow and timing-dependent. Signal completion with a TaskCompletionSource set when the expected count is reached, read the list under the lock, and check for unwanted deliveries with a short, bounded wait.
                 while (true)
                 {
                     if (messageReceived.Count >= expectedMessageToBeReceived.Count)

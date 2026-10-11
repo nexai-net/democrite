@@ -50,6 +50,7 @@ namespace Democrite.Toolbox.Abstractions.Conditions
                 this.Value = JsonConvert.DeserializeObject(serialized, type.ToType());
             }
 
+            //TO-DO from Opus 5.5 Comparer field lost on non-ctor deserialization : _comparer is only set in the constructor. DataContract or Orleans-style deserializers that skip constructors leave it null, so OnEquals throws NullReferenceException. ToType() also throws for Generic types. Build the comparer lazily, for example from a static per-Type cache.
             this._comparer = BuildComparer(type.ToType());
         }
 
@@ -66,6 +67,7 @@ namespace Democrite.Toolbox.Abstractions.Conditions
         /// <summary>
         /// Gets the value.
         /// </summary>
+        //TO-DO from Opus 5.5 TypeNameHandling.All on object payload : An `object` property deserialized with TypeNameHandling.All (also ItemTypeNameHandling.All on ConditionBaseDefinition and related types) lets a crafted $type instantiate arbitrary gadget types, a known Newtonsoft RCE vector. Restrict it with a SerializationBinder allow-list, or use the existing System.Text.Json polymorphic discriminators.
         [Newtonsoft.Json.JsonProperty(TypeNameHandling = Newtonsoft.Json.TypeNameHandling.All)]
         [DataMember]
         public object? Value { get; }

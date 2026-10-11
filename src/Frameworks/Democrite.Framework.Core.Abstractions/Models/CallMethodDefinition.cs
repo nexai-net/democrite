@@ -125,6 +125,7 @@ namespace Democrite.Framework.Core.Abstractions.Models
             if (obj is CallMethodDefinition def)
                 return Equals(def);
 
+            //TO-DO from Opus 5.5 Asymmetric Equals with MethodInfo : Equals(object) returns true for a MethodInfo while MethodInfo.Equals never returns true back and hash codes differ, breaking symmetry and hash contracts. Keep Equals(object) for CallMethodDefinition only and expose a separate Matches(MethodInfo).
             if (obj is MethodInfo info)
                 return Equals(info);
 

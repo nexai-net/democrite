@@ -90,6 +90,7 @@ namespace Democrite.Framework.Core.Diagnostics
             if (this.IsDisposed || !this.HasConsumer)
                 return;
 
+            //TO-DO from Opus 5.5 CancellationTokenSource leaked per diagnostic log : CancellationHelper.Timeout creates a CancellationTokenSource with a timer that is never disposed, one per log entry, so timers and memory pile up under load. Use CancellationHelper.DisposableTimeout in a using block inside the Task.Run. Also remove the Debugger.Break() in the catch block.
             var timeoutToken = CancellationHelper.Timeout();
 
             Task.Run(async () =>

@@ -152,6 +152,7 @@ namespace Democrite.Framework.Core
             var allTasks = this.ProviderSource.Select(p => p.TryGetDataAsync(key, token)).ToArray();
             await allTasks.SafeWhenAllAsync(token);
             var results = await allTasks.AggregateResults(this._localLogger);
+            //TO-DO from Opus 5.5 TryGetDataAsync returns first, not successful, result : Returns the first provider's tuple even when it is (false, null) and another provider found the definition, and throws if no provider is registered. Return the first entry with Success == true, else (false, null).
             return results.First();
         }
 

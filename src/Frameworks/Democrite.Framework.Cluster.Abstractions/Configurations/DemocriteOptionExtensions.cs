@@ -41,6 +41,7 @@ namespace Democrite.Framework.Configurations
                     if (serviceDesc.ImplementationInstance is TOption optionInst)
                         return optionInst;
 
+                    //TO-DO from Opus 5.5 Service factory invoked with null provider : Calling ImplementationFactory(null) crashes with NullReferenceException for any factory that resolves dependencies, and builds an extra instance outside DI. Avoid executing factories at registration time: defer option resolution or require an instance registration (same issue at line 61).
                     if (serviceDesc.ImplementationFactory != null)
 #pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
                         return (TOption)serviceDesc.ImplementationFactory(null);

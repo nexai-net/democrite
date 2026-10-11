@@ -66,6 +66,7 @@ namespace Democrite.Framework.Core.Models
         /// <inheritdoc />
         public object? GetData(IDemocriteSerializer democriteSerializer)
         {
+            //TO-DO from Opus 5.5 Non thread-safe lazy deserialization : Concurrent GetData calls can deserialize multiple times and observe _dataLoaded before _data is published. Use Lazy<T> or LazyInitializer.
             if (!this._dataLoaded)
             {
                 this._data = democriteSerializer.Deserialize<TData>(this._serializedData);

@@ -93,6 +93,7 @@ namespace Democrite.Framework.Node.Triggers
         /// <summary>
         /// Raised when the <see cref="ITriggerDefinitionProvider"/> notify a change in the definitions.
         /// </summary>
+        //TO-DO from Opus 5.5 Async void handler never unsubscribed : The handler is async void, so a failure in WaitAsync or Release escapes unobserved. It is subscribed in the constructor and never removed, which keeps the service alive and firing after it stops. Wrap the body in try/catch and unsubscribe in Stop or Dispose.
         private async void TriggerDefinitionProvider_DataChanged(object? sender, IReadOnlyCollection<Guid> definitionThatChanged)
         {
             await this._locker.WaitAsync();

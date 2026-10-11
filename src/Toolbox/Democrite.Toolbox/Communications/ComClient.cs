@@ -96,6 +96,7 @@ namespace Democrite.Toolbox.Communications
             try
             {
                 var quantitySize = sizeof(ushort);
+                //TO-DO from Opus 5.5 Unbounded stackalloc and ushort length truncation : A payload larger than 65535 bytes gets a silently truncated ushort length prefix, which corrupts the stream framing, and a large payload can overflow the stack. Concurrent Send calls can also interleave frames. Validate the size (throw above ushort.MaxValue), use an ArrayPool buffer, and serialize writes with a lock.
                 Span<byte> sizeBuffer = stackalloc byte[quantitySize + data.Length];
 
                 var sizeArray = BitConverter.GetBytes((ushort)data.Length);

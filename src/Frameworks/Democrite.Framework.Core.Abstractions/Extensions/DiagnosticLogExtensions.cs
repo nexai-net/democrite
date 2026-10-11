@@ -46,6 +46,7 @@ namespace Democrite.Framework.Core.Abstractions.Extensions
                         builder.AppendLine(log.ToDebugDisplayName());
                     }
 
+                    //TO-DO from Opus 5.5 Unbounded recursion on cyclic log ids : If a log's CurrentExecutionId equals its CallerId (e.g. Guid.Empty at root) or forms a cycle, recursion never ends and causes a StackOverflowException. Track visited ids and skip grp.Key == parentId.
                     var childStr = ToDebugDisplayName(parentIndx, grp.Key).Replace("\n", "\n    ");
                     if (!string.IsNullOrEmpty(childStr))
                     {

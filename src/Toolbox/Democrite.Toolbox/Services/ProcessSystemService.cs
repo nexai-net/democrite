@@ -90,6 +90,7 @@ namespace Democrite.Toolbox.Services
                                              CancellationToken token,
                                              params string[] arguments)
         {
+            //TO-DO from Opus 5.5 RunAsync ignores the workingDir parameter : This calls the StartAsync overload without workingDir, which always uses ".", so the caller's working directory is silently dropped. Call StartAsync(exec, workingDir, token, arguments). The returned IExternalProcess should also be disposed here and in CheckExecAvailableAsync.
             var externalProcess = await StartAsync(exec, token, arguments);
             await externalProcess.GetAwaiterTask();
             return externalProcess.ExitCode ?? -1;
@@ -101,6 +102,7 @@ namespace Democrite.Toolbox.Services
                                                             CancellationToken token,
                                                             params string[] arguments)
         {
+            //TO-DO from Opus 5.5 Unescaped process arguments allow injection : Joining the arguments with spaces breaks any argument that contains spaces or quotes, and lets crafted input inject extra arguments. Fill ProcessStartInfo.ArgumentList with each argument instead, so .NET escapes them correctly.
             var process = new ProcessStartInfo(exec, string.Join(" ", arguments));
             process.WorkingDirectory = workingDir;
 

@@ -132,6 +132,7 @@ namespace Democrite.Toolbox.Communications
                 using (var token = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancelToken.Content))
                 {
                     var sendUid = SendImpl(MessageType.Ping, null, out var waitingResultTask, true, token.Token, null);
+                    //TO-DO from Opus 5.5 Ping never actually waits for the pong : StartNew with an async lambda returns Task<Task>, and only the outer task is awaited, so PingAsync returns true immediately. On top of that, the Pong reply (line 260) is sent with a new message id, so the pending task could never be matched anyway. Await waitingResultTask.Task.WaitAsync(token) directly, and echo the ping's message id in the Pong.
                     await Task.Factory.StartNew(async () => await waitingResultTask!.Task, token.Token);
                 }
             }
@@ -152,6 +153,7 @@ namespace Democrite.Toolbox.Communications
             {
 
                 var sendUid = SendImpl(MessageType.User, data, out var waitingResultTask, true, token.Token, forceMessageId);
+                //TO-DO from Opus 5.5 AskAsync blocks on .Result and ignores timeout : Because of the Task<Task> unwrap bug, the next line's waitingResultTask.Task.Result blocks a thread synchronously until the reply arrives. This bypasses both the timeout and the cancellation token. Replace both lines with 'var results = await waitingResultTask!.Task.WaitAsync(token.Token);'.
                 await Task.Factory.StartNew(async () => await waitingResultTask!.Task, token.Token);
 
                 var results = waitingResultTask!.Task.Result;
@@ -242,6 +244,7 @@ namespace Democrite.Toolbox.Communications
 
                 lock (this._pendingResultTasks)
                 {
+                    //TO-DO from Opus 5.5 Pending request entries are never removed : Completed, cancelled or timed-out requests stay in _pendingResultTasks for the life of the connection, which is an unbounded leak. Use TryRemove-style logic here and remove the entry in the cancellation callback as well. Also check msg.Length >= 1 + s_guidSize before slicing, so a malformed frame cannot crash the observer.
                     this._pendingResultTasks.TryGetValue(uid, out resultTask);
                 }
 

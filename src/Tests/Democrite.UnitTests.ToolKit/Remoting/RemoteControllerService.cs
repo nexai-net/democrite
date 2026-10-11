@@ -108,6 +108,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         /// </summary>
         /// <param name="sender">The sender.</param>
         /// <param name="e">The <see cref="ConnectionMessageEventArgs{System.Nullable{RemoteCallMessage}}"/> instance containing the event data.</param>
+        //TO-DO from Opus 5.5 async void handler can crash test host : This async void event handler throws NotImplementedException at its end, and its awaited WriteAsync sits outside the try/catch. Any exception it throws goes to the thread pool and kills the test process. Wrap the whole body in try/catch and send an error RemoteCallMessage back instead of throwing.
         private async void ServerMessageReceived(object? sender, ConnectionMessageEventArgs<RemoteCallMessage?> e)
         {
             if (e == null || e.Message == null || string.IsNullOrEmpty(e.Message.JsonContent))

@@ -192,6 +192,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
                 var taskCompletion = new TaskCompletionSource<object?>();
                 var execId = Guid.NewGuid();
 
+                //TO-DO from Opus 5.5 Semaphore released even when wait fails : The WaitAsync call sits inside the try and Release() inside the finally, so a timeout or cancellation during WaitAsync still releases a permit it never acquired. That corrupts the lock (extra permit or SemaphoreFullException). Call WaitAsync before the try block. Entries added to _callRegistry are also never removed.
                 try
                 {
                     await this._locker.WaitAsync(timeoutCallToken.Token);
@@ -221,6 +222,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
                 await this._client.WriteAsync(callMsg, timeoutCallToken.Token);
                 timeoutCallToken.Token.ThrowIfCancellationRequested();
 
+                //TO-DO from Opus 5.5 Remote call awaits without timeout : The response TaskCompletionSource is awaited without s_callTimeout, so a lost response hangs the test forever, and the ThrowIfCancellationRequested on the next line never runs. Use taskCompletion.Task.WaitAsync(timeoutCallToken.Token) and remove the registry entry in a finally block.
                 await taskCompletion.Task;
                 timeoutCallToken.Token.ThrowIfCancellationRequested();
 

@@ -232,6 +232,7 @@ namespace Democrite.Toolbox.Communications
             this._serverWorkingCancellationTokenSource.Cancel();
             this._server?.Stop();
 
+            //TO-DO from Opus 5.5 Dispose never releases the semaphore, deadlock : The semaphore is released only in the catch block, so on success it stays held. Disposing a client fires ClientLeaveEvent, which calls _locker.Wait() and blocks forever. base.DisposeBeginAsync is also never called. Copy the client list under the lock, release in a finally, dispose the clients outside the lock, then call the base method.
             this._locker.Wait();
             try
             {

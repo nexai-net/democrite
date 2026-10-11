@@ -118,6 +118,7 @@ namespace Democrite.Toolbox.Models
             if (obj is AbstractType abstractType)
                 return Equals(abstractType);
 
+            //TO-DO from Opus 5.5 Equals(object) with Type breaks hash contract : Equals(object) returns true for a System.Type while GetHashCode is computed from DisplayName, Category and so on, so equal objects have different hashes and dictionaries or sets that mix the two misbehave. The equality is also asymmetric. Keep cross-type comparison in the explicit IEquatable<Type> or IsEqualTo methods only.
             if (obj is Type type)
                 return Equals(type);
 

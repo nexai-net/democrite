@@ -33,6 +33,7 @@ namespace Democrite.Toolbox.Services
         {
             s_defaultDeserializationOptions = new JsonSerializerSettings()
             {
+                //TO-DO from Opus 5.5 Default TypeNameHandling.Auto enables RCE gadgets : The default Instance deserializes any $type found in the JSON without an ISerializationBinder. Untrusted input (for example ComApiHandler messages coming over TCP) can therefore create arbitrary gadget types. Default to TypeNameHandling.None, or add a strict allow-list SerializationBinder.
                 TypeNameHandling = TypeNameHandling.Auto,
                 Formatting = Debugger.IsAttached ? Formatting.Indented : Formatting.None,
             };

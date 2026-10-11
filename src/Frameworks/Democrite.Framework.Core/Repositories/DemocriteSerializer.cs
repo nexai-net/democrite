@@ -74,6 +74,7 @@ namespace Democrite.Framework.Core.Repositories
                 Error = options.Error,
                 NullValueHandling = options.NullValueHandling,
                 TraceWriter = options.TraceWriter,
+                //TO-DO from Opus 5.5 Unsafe TypeNameHandling.All deserialization : Newtonsoft deserialization with TypeNameHandling.All, combined with Orleans' permissive binder, lets stored or remote JSON choose any loadable type, a known gadget-based RCE vector. Restrict TypeNameHandling (Auto/Objects) and use an allow-list ISerializationBinder limited to known Democrite and Orleans types.
                 TypeNameHandling = TypeNameHandling.All,
                 TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Full,
                 ReferenceResolverProvider = options.ReferenceResolverProvider,

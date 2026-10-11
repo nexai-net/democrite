@@ -55,6 +55,7 @@ namespace Democrite.Toolbox.Services
             var preparationSucceed = CheckAndPrepareFileTarget(uri, @override);
             if (preparationSucceed)
             {
+                //TO-DO from Opus 5.5 Copy loop allocates whole file, may never end : Math.Max allocates a buffer the size of the whole file instead of capping it at 64 KB. The loop also compares bytes read against stream.Length, so a stream whose position is not 0, or a read that returns 0 early, makes it spin forever. Use Math.Min, or simply await stream.CopyToAsync(outputStream, token).
                 var buffer = new byte[Math.Max(stream.Length, 65536)];
 
                 using (var outputStream = File.OpenWrite(uri.LocalPath))
@@ -148,6 +149,7 @@ namespace Democrite.Toolbox.Services
             }
 
             var localTempFolder = MakeUriAbsolute(".tmp");
+            //TO-DO from Opus 5.5 Temp folder returned as URI, not path : MakeUriAbsolute builds a file:// URI, so OriginalString returns 'file:///C:/.../.tmp' rather than a filesystem path, unlike the global branch, which returns a plain path. Return localTempFolder.LocalPath.
             return ValueTask.FromResult(localTempFolder.OriginalString);
         }
 
@@ -156,6 +158,7 @@ namespace Democrite.Toolbox.Services
         {
             var exists = Exists(file);
             if (exists)
+                //TO-DO from Opus 5.5 Delete uses URI string instead of local path : For absolute file:// URIs, OriginalString is 'file:///...', which File.Delete rejects. Exists() also returns true for directories, so File.Delete fails on those. Use file.LocalPath and handle directories separately.
                 File.Delete(file.OriginalString);
             return ValueTask.FromResult(exists);
         }

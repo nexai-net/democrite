@@ -205,6 +205,7 @@ namespace Democrite.Framework.Core.Models
                    cancelled,
                    errorCode,
                    message,
+                   //TO-DO from Opus 5.5 HasOutput false for legitimate default values : A valid result equal to default(TResult), such as 0, false or an empty struct, is reported as HasOutput == false, which callers may treat as no result. Pass an explicit hasOutput flag based on whether the execution produced a value.
                    !EqualityComparer<TResult>.Default.Equals(output, default),
                    typeof(TResult).Name)
         {

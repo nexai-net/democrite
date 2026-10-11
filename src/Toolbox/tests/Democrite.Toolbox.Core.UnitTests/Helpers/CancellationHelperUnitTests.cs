@@ -91,6 +91,7 @@ namespace Democrite.Toolbox.UnitTests.Helpers
         /// <summary>
         /// Test <see cref="CancellationHelper.Timeout(TimeSpan?)"/> correcly cancel the token after the time asked
         /// </summary>
+        //TO-DO from Opus 5.5 Timeout safety test is skipped : The only test for CancellationHelper.Timeout is disabled because its wall-clock bounds were flaky. It also passes an async lambda to ThatCode instead of ThatAsyncCode. Re-enable it using an injectable TimeProvider (FakeTimeProvider) or wide bounds, and await the asynchronous check.
         [Fact(Timeout = 5000, Skip = "To variable")] // Security test MUST exist normally on the time setups
         public async Task CancellationHelper_Timeout()
         {

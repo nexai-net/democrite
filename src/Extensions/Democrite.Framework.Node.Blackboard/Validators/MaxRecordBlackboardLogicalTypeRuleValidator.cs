@@ -52,6 +52,7 @@ namespace Democrite.Framework.Node.Blackboard.Validators
 
                 foreach (var record in recordMetadata)
                 {
+                    //TO-DO from Opus 5.5 IncludeDecommissioned option ignored : Decommissioned records are always excluded, even when Rule.IncludeDecommissioned is true (as configured through OnlyOne/MaxRecord). Use `(this.Rule.IncludeDecommissioned || status != Decommissioned)`.
                     if (record.Value.Status != RecordStatusEnum.Decommissioned && this._logicalTypeFilterPattern.IsMatch(record.Value.LogicalType))
                     {
                         conflictRecords.Add(record.Value);

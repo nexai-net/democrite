@@ -11,6 +11,7 @@ namespace Democrite.Framework.Extensions.Docker.Abstractions.Options
     /// <summary>
     /// 
     /// </summary>
+    //TO-DO from Opus 5.5 Typos in public API names : The public type 'DockerEnvironementOptions' (and 'ExternalDockerCodeDeamonExecutor' in ArtifactDockerExecutor.cs, plus the '_deamonMode' field) are misspelled, and the typos spread into user configuration code. Rename them to 'DockerEnvironmentOptions' and 'Daemon', keeping an [Obsolete] alias for the public type for compatibility.
     [Immutable]
     [Serializable]
     [GenerateSerializer]

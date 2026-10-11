@@ -79,6 +79,7 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// <inheritdoc />
         public void Execute(GeneratorExecutionContext context)
         {
+            //TO-DO from Opus 5.5 Generator state persists across compilations : The generator registers itself as receiver and accumulates nodes in an instance HashSet that is never cleared, so in IDE/incremental builds stale nodes from previous compilations are processed (GetSemanticModel throws 'tree not part of compilation') and memory grows; the guard condition is also meaningless. Create a fresh receiver per pass (RegisterForSyntaxNotifications(() => new Receiver())) or migrate to IIncrementalGenerator.
             if (context.SyntaxContextReceiver != this && this._vgrainRefToBuild.Any())
                 return;
 
@@ -119,8 +120,10 @@ namespace Democrite.Framework.Core.CodeGenerator
                     var attrData = member.AttributeLists.SelectMany(a => GetAttributes(a, context.Compilation))
                                                         .FirstOrDefault(a => a.ApplicationSyntaxReference?.GetSyntax() == attr);
 
+                    //TO-DO from Opus 5.5 Null attrData crashes the generator : attrData (FirstOrDefault) or AttributeConstructor (unresolved attribute) can be null, causing an NRE that aborts generation for the whole assembly. Check for null and report an EDG diagnostic instead.
                     var ctrParameters = attrData.AttributeConstructor.Parameters.Select(p => p.Name).ToArray();
 
+                    //TO-DO from Opus 5.5 Attribute argument index mapping is wrong : Positional arguments are named from NamedArguments[index] and values always come from ConstructorArguments[index], so named (Prop = x) arguments or mixed forms read wrong values or throw IndexOutOfRange; ArgumentList can also be null. Build the map from attrData.ConstructorArguments + AttributeConstructor.Parameters and attrData.NamedArguments directly.
                     var args = attr.ArgumentList.Arguments
                                                 .Select((a, i) => (Arg: a, Indx: i))
                                                 .ToDictionary(k => k.Arg.NameColon?.Name.Identifier.Text ??
@@ -152,6 +155,7 @@ namespace Democrite.Framework.Core.CodeGenerator
                     if (byType.Key.Item1 == SyntaxKind.MethodDeclaration)
                     {
                         registryLines.Append("registry.RegisterMethod(");
+                        //TO-DO from Opus 5.5 NRE for methods inside records : If the method's parent is a record (or other type declaration), mthdMemberIdentifier is null and .Value throws. Use (member.Parent as TypeDeclarationSyntax)?.Identifier and report a diagnostic when null.
                         var mthdMemberIdentifier = (member.Parent as ClassDeclarationSyntax)?.Identifier ?? (member.Parent as InterfaceDeclarationSyntax)?.Identifier ?? (member.Parent as StructDeclarationSyntax)?.Identifier;
                         model = context.Compilation.GetSemanticModel(mthdMemberIdentifier.Value.SyntaxTree).GetDeclaredSymbol(member.Parent);
 
@@ -161,6 +165,7 @@ namespace Democrite.Framework.Core.CodeGenerator
 
                         nbGenericArgs = mthd.TypeParameterList?.Parameters.Count ?? 0;
 
+                        //TO-DO from Opus 5.5 Quadratic symbol lookup swallowing exceptions : For each parameter every semantic model of the compilation is tried with GetDeclaredSymbol inside an empty catch, costing O(params x trees) and hiding real errors. Use the semantic model of the parameter's own SyntaxTree (or GetTypeInfo(p.Type)).
                         arguments.AddRange(mthd.ParameterList.Parameters
                                                              .Select(p => (p.Type?.GetTypeFullNameWithNamespace(t => semanticModels.Select(s =>
                                                                                                                                            {
@@ -334,6 +339,7 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// </summary>
         private bool IsVGrain(MemberDeclarationSyntax s)
         {
+            //TO-DO from Opus 5.5 IsVGrain ignores inheritance and loop variable : The lambda ignores the ancestor m and re-checks only s's direct base list, so types inheriting IVGrain indirectly (e.g. ILogicalDoorVGrain : IDoorVGrain, or classes deriving from a VGrain base) are misclassified as plain Type. Use the semantic model (AllInterfaces contains IVGrain).
             return (s is ClassDeclarationSyntax || s is InterfaceDeclarationSyntax) &&
                     s.Ancestors()
                      .SelectMany(m => (s is ClassDeclarationSyntax cls

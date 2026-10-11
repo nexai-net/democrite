@@ -77,6 +77,7 @@ namespace Democrite.Framework.Node.Signals.Doors
         /// <summary>
         /// Doors the definition provider data changed.
         /// </summary>
+        //TO-DO from Opus 5.5 async void event handler, never unsubscribed : Any exception thrown outside LaunchSignalsVGrainsAsync (for example ObjectDisposedException on _locker) crashes the process, and the DataChanged handler is never removed when the service stops, so the service is never released and keeps running after stop. Wrap the body in try/catch with logging and unsubscribe in the stop or dispose path.
         private async void DoorDefinitionProvider_DataChanged(object? sender, IReadOnlyCollection<Guid> definitionThatChanged)
         {
             await this._locker.WaitAsync();

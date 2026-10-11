@@ -42,6 +42,7 @@ namespace Democrite.Toolbox.Disposables
         /// <summary>
         /// Finalizes an instance of the <see cref="SafeDisposable"/> class.
         /// </summary>
+        //TO-DO from Opus 5.5 Finalizer on every instance runs managed callbacks : Every SafeDisposable, plus its inner SafeContainer, is finalizable, which costs GC time on the many short-lived lock tokens and pool items. On the finalizer thread, Dispose(false) still runs DisposeBegin, DisposableAction callbacks (for example semaphore Release) and dependency Dispose. Remove the finalizer, or in the finalizer path skip DisposeBegin, the callbacks and the dependencies.
         ~SafeDisposable()
         {
             Dispose(false);

@@ -53,6 +53,7 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Pools
         /// <summary>
         /// Thread safe pool test
         /// </summary>
+        //TO-DO from Opus 5.5 async void test is non-deterministic : ThreadSafe_Pool is declared async void, so xUnit cannot reliably observe its completion or exceptions. The assertion IsStrictlyLessThan(TEST_SIZE) also fails whenever all 120 Task.Run callbacks get an item before any release happens. Change the signature to async Task and make the scenario deterministic, for example with a Barrier/SemaphoreSlim that controls when items are released, or by asserting on pool invariants rather than on the scheduling outcome.
         [Fact]
         public async void ThreadSafe_Pool()
         {

@@ -43,6 +43,7 @@ namespace Democrite.Framework.Extensions.Mongo.Services
         {
             ArgumentNullException.ThrowIfNullOrEmpty(connectionString);
 
+            //TO-DO from Opus 5.5 mongodb+srv connection strings get mangled : A 'mongodb+srv://...' string does not start with 'mongodb://', so it becomes 'mongodb://mongodb+srv://...' and Atlas/SRV connections break. Accept both schemes (and compare case-insensitively) before adding the prefix.
             if (!connectionString.StartsWith(URI_TYPE))
                 connectionString = URI_TYPE + connectionString;
 

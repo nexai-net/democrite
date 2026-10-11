@@ -13,6 +13,7 @@ namespace Democrite.Toolbox.WPF.UI.Selectors
     {
         #region Fields
 
+        //TO-DO from Opus 5.5 Item DP hard-typed as DataTemplate : The generic base registers ItemProperty with typeof(DataTemplate) under the name "TItem", so setting a Style on the Style selectors (PropertyConditonalStyleSelector, TypeConditonalStyleSelector) throws because the value type is invalid. Register it with typeof(TItem) and nameof(Item).
         public static readonly DependencyProperty ItemProperty = DependencyProperty.Register(nameof(TItem),
                                                                                              typeof(DataTemplate),
                                                                                              typeof(ConditonalBaseItem<TItem>),

@@ -50,6 +50,7 @@ namespace Democrite.Framework.Node.References
         public bool IsToUpdate(string currentRegistryEtag)
         {
             var task = this._currentGrainService.IsToUpdate(currentRegistryEtag);
+            //TO-DO from Opus 5.5 Blocking wait on grain service call : IsToUpdate makes a synchronous call into a grain service with GetResult(). When it is called from a grain or system-target context it can deadlock, and it always blocks a thread. Make it return ValueTask<bool> and await it in the callers.
             return task.AsTask().GetAwaiter().GetResult();
         }
 

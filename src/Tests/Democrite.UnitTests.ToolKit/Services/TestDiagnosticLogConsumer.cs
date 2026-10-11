@@ -74,6 +74,7 @@ namespace Democrite.UnitTests.ToolKit.Services
         /// <remarks>
         ///     Use time wetween last log received
         /// </remarks>
+        //TO-DO from Opus 5.5 Log flush relies on quiet-period heuristic : FlushAsync treats 500 ms without a new log as the end of the flow, so slow CI agents can return before all logs arrive, which makes the FlowValidator-based tests flaky. Wait for an explicit end-of-flow log or an expected log count, with a timeout.
         public async Task FlushAsync(CancellationToken token)
         {
             long logCount;

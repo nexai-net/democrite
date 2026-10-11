@@ -22,6 +22,7 @@ namespace Democrite.Toolbox.Core.UnitTests.Extensions
             s_genericMethod = ((MethodCallExpression)func.Body).Method.GetGenericMethodDefinition();
         }
 
+        //TO-DO from Opus 5.5 Test without any assertion : Method_Caching_System computes two hash codes and asserts nothing, and it does not call any Democrite code, so it can never fail. Either assert the expected caching behavior of the ReflectionExtensions under test or delete the test.
         [Fact]
         public void Method_Caching_System()
         {

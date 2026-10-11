@@ -103,6 +103,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
         /// <inheritdoc />
         public SequenceExecutorExecThreadStateSurrogate ConvertToSurrogate(in SequenceExecutorExecThreadState value)
         {
+            //TO-DO from Opus 5.5 Surrogate drops ErrorMessage of failed threads : The Orleans surrogate has no ErrorMessage field, so a thread failed with SetError(string) loses its error on persistence or rehydration and then looks completed successfully. Add an [Id(11)] ErrorMessage member, round-trip it through both converter methods, and pass it to the state's JSON/internal ctor.
             return new SequenceExecutorExecThreadStateSurrogate()
             {
                 FlowUid = value.FlowUid,

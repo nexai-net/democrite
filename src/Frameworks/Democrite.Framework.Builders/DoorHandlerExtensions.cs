@@ -134,6 +134,7 @@ namespace Democrite.Framework.Builders.Signals
         /// <remarks>
         ///     We recommand that <typeparamref name="THandler"/> implementation inherite from <see cref="Framework.Node.Signals.Doors.DoorBaseVGrain{THandler, TDoorDef}"/> from extension <see cref="Democrite.Framework.Node.Signals"/>
         /// </remarks>
+        //TO-DO from Opus 5.5 THandler type parameter is never used : THandler is only validated as an interface; it is never recorded in the resulting DoorDefinition, which is built entirely by the callback. The API implies a custom VGrain handler is wired up when it is not. Pass typeof(THandler) to the produced definition, or remove the generic parameter.
         public static IDefinitionBaseBuilder<DoorDefinition> UseCustomHandler<THandler>(this IDoorWithListenerBuilder doorWithListenerBuilder, Func<IDoorWithListenerBuilder, IDefinitionBaseBuilder<DoorDefinition>> doorDefinitionBuilder)
             where THandler : IDoorVGrain
         {

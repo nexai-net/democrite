@@ -6,6 +6,7 @@
 
 trigger: none
 
+#TO-DO from Opus 5.5 PR validation targets non-existent branches : PR builds trigger only for 'main' and 'dev', but the repository's main branch is 'master', and the Linux job is commented out. PRs to master are never validated and cross-platform builds are never tested. Add master to the branch filter, re-enable the Linux job, and drop includePreviewVersions: true so SDK versions stay reproducible.
 pr:
   autoCancel: true
   branches:

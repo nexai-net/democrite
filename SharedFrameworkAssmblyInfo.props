@@ -1,6 +1,7 @@
 ﻿<Project>
 
 	<PropertyGroup>
+		<!--TO-DO from Opus 5.5 Shared props file name is misspelled : 'SharedFrameworkAssmblyInfo.props' is misspelled and imported by name from about 60 csproj files and referenced in pipeline comments, which hurts discoverability. Rename it to Directory.Build.props, or at least SharedFrameworkAssemblyInfo.props, so it is imported automatically. Projects that redefine TargetFramework/Nullable without importing it (Benchmark.Sandbox, ComServer.Abstraction.Test) would then pick it up too.-->
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
@@ -19,6 +20,7 @@
 		<Copyright>Copyright (c) Nexai.net</Copyright>
 		
 		<PackageProjectUrl>https://github.com/nexai-net/democrite</PackageProjectUrl>
+		<!--TO-DO from Opus 5.5 Invalid NuGet license and readme properties : PackageLicense and PackageReadme are not recognized MSBuild properties, so the published packages carry no license or readme metadata, and README.md is never packed. Use PackageLicenseExpression (MIT) or PackageLicenseFile, plus PackageReadmeFile with a matching <None Include=... Pack="true"> item.-->
 		<PackageLicense>pkg/LICENSE</PackageLicense>
 		<PackageReadme>README.md</PackageReadme>
 		<PackageIcon>pkg/logo.png</PackageIcon>
@@ -28,6 +30,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+      <!--TO-DO from Opus 5.5 Pack items depend on empty SolutionDir : The logo and LICENSE are included through $(SolutionDir), which is empty outside a solution build, so 'dotnet pack' on a single project fails with NU5046. Use $(MSBuildThisFileDirectory)docs\logo.png and $(MSBuildThisFileDirectory)LICENSE instead, or move the files into a Directory.Build.props.-->
       <None Include="$(SolutionDir)docs\logo.png" Pack="true" PackagePath="pkg/"/>
       <None Include="$(SolutionDir)LICENSE" Pack="true" PackagePath="pkg/" />
   </ItemGroup>

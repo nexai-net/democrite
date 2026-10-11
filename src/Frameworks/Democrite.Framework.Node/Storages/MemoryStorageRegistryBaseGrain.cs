@@ -172,6 +172,7 @@ namespace Democrite.Framework.Node.Storages
                             this._memoryStorageInfo.Add(key, memoryStorageInfo);
                         }
 
+                        //TO-DO from Opus 5.5 Half-initialized registry entry left on error : The new MemoryStorageInfo is added to the dictionary before storageGrain, type and parentTypes are validated, so a throw leaves an entry with a null StorageGrain and StoredType that later read requests fail on. Validate before inserting.
                         if (storageGrain is null)
                             throw new InvalidOperationException("Storage Grain must be reported for future request");
 

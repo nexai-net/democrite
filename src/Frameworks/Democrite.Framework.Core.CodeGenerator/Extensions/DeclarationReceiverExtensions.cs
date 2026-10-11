@@ -81,6 +81,7 @@ namespace Microsoft.CodeAnalysis
 
                 if (namedType.IsGenericType)
                 {
+                    //TO-DO from Opus 5.5 Uses TypeParameters instead of TypeArguments : Closed generic parameter types like List<string> are emitted as List<AnyType>, so RegisterMethod cannot match overloads correctly; nested types and arrays (global::string[]) are also mis-rendered. Use namedType.TypeArguments and SymbolDisplayFormat.FullyQualifiedFormat.
                     var args = string.Join(", ", namedType.TypeParameters.Select(p => GetTypeFullNameWithNamespace(p)));
                     return typeStr + "<" + args + ">";
                 }
@@ -131,12 +132,14 @@ namespace Microsoft.CodeAnalysis
                     return GetTypeFullName(((QualifiedNameSyntax)type).Left) + "." + GetTypeFullName(((QualifiedNameSyntax)type).Right);
 
                 case Microsoft.CodeAnalysis.CSharp.SyntaxKind.AliasQualifiedName:
+                    //TO-DO from Opus 5.5 Alias-qualified name drops the type : For global::Ns.Type only the alias ('global') is returned, losing the actual type name. Return Alias + "::" + GetTypeFullName(Name).
                     return GetTypeFullName(((AliasQualifiedNameSyntax)type).Alias);
 
                 case Microsoft.CodeAnalysis.CSharp.SyntaxKind.GenericName:
                     return ((GenericNameSyntax)type).Identifier.Text + "<" + string.Join(", ", ((GenericNameSyntax)type).TypeArgumentList.Arguments.Select(a => GetTypeFullName(a))) + ">";
 
                 default:
+                    //TO-DO from Opus 5.5 Null-coalescing never applies : Operator precedence makes ?? apply to the concatenated (never null) string, so the fallback text is dead code. Use "Unknown type " + (type?.GetType().ToString() ?? "null type syntax") (same at line 167).
                     throw new NotImplementedException("Unknow type " + type?.GetType() ?? "null type syntax");
             }
         }

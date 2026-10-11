@@ -78,6 +78,7 @@ namespace System.Reflection
                 do
                 {
                     if (cacheContainsHash)
+                        //TO-DO from Opus 5.5 Method unique id becomes non-deterministic : On a hash collision, which happens whenever two methods share a display name (it uses short type names and ReturnType.FullName, which can be null), a random Guid is mixed into the id, so MethodUniqueId depends on call order and differs between processes or nodes. Build the id from fully qualified names (declaring type AQN, parameter type full names, generic arity) so it is collision-free and stable, and fail fast on a real collision.
                         randomKeyPart = Guid.NewGuid();
 
                     hashKey = BuildMethodUniqueId(methodInfo, randomKeyPart);

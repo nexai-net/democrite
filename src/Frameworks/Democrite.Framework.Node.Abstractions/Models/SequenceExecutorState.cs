@@ -142,6 +142,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
         /// <inheritdoc />
         public string ToDebugDisplayName()
         {
+            //TO-DO from Opus 5.5 string.Format over interpolated string can throw : The interpolated result, which includes exception text and possibly braces, is used as a format string. Any '{' or '}' in it raises FormatException while debug info is being produced. Remove the string.Format wrapper and return the interpolated string directly.
             return string.Format($"[{this.InstanceId}][SequenceDefinitionId({this.SequenceDefinitionId})] - Flow {this.FlowUid} - {this.MainThread?.ToDebugDisplayName()}");
         }
 

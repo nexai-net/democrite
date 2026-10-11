@@ -109,6 +109,7 @@ namespace Democrite.Framework.Node.Blackboard.Models
             if (this._serializeQuery is null)
             {
                 Debug.Assert(this._democriteSerializer is not null);
+                //TO-DO from Opus 5.5 Serializes the serializer instead of the query : GetRequestSerializeBytes serializes the IDemocriteSerializer instance rather than _queryRequest, so every persisted deferred query holds bytes that cannot be read back, and GetRequest() fails after reactivation. Serialize this._queryRequest instead.
                 var rawQuery = this._democriteSerializer.SerializeToBinary(this._democriteSerializer).ToArray();
                 this._serializeQuery = Encoding.UTF8.GetBytes(Convert.ToBase64String(rawQuery));
             }

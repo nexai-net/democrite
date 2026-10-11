@@ -27,6 +27,7 @@ namespace Democrite.Framework.Core.Abstractions.Surrogates
     [Serializable]
     [GenerateSerializer]
     [ImmutableObject(true)]
+    //TO-DO from Opus 5.5 Broken equality makes type cache leak : It implements IEquatable<ConcretTypeSurrogate> (wrong type), so the synthesized record Equals compares ItemCollectionType by reference while GetHashCode uses only the name; each deserialized collection surrogate adds a new entry to the static s_fromSurrogateCache (unbounded growth). Implement Equals(CollectionConcretTypeSurrogate) consistently with GetHashCode.
     public record struct CollectionConcretTypeSurrogate(string DisplayName,
                                                         string? NamespaceName,
                                                         string AssemblyQualifiedName,

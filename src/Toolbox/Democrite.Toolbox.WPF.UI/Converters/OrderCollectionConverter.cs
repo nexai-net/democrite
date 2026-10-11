@@ -46,6 +46,7 @@ namespace Democrite.Toolbox.WPF.UI.Converters
                                      PropertyInfo? sortProp = null;
                                      var type = c.GetType();
 
+                                     //TO-DO from Opus 5.5 Inverted cache check crashes on second item : The branch runs when the type is already cached, then calls localPropCache.Add with the same key, so the converter throws ArgumentException as soon as two items share a type. Use `!localPropCache.TryGetValue(...)` (or TryAdd).
                                      if (localPropCache is null || localPropCache.TryGetValue(type, out sortProp))
                                      {
                                          localPropCache ??= new Dictionary<Type, PropertyInfo?>();

@@ -53,6 +53,7 @@ namespace Democrite.Toolbox.Services
             this._standardOutput = new Subject<string>();
             RegisterDisposableDependency(this._standardOutput);
 
+            //TO-DO from Opus 5.5 Non-thread-safe Queue shared across threads : Process output events enqueue on a thread-pool thread while StandardOutput and ErrorOutput hand the same live Queue to callers, which enumerate it (for example Any() and Where() in ProcessSystemService). Use ConcurrentQueue<string> and return snapshots (ToArray()).
             var defaultRecordToken = this._standardOutput.Subscribe((n) => this._standardOutputLogger.Enqueue(n));
             RegisterDisposableDependency(defaultRecordToken);
 

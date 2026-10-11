@@ -264,6 +264,7 @@ namespace Democrite.Framework.Node.Storages
             {
                 limit ??= int.MaxValue;
 
+                //TO-DO from Opus 5.5 Cancellation registration never disposed : The CancellationTokenRegistration is not disposed, so long-lived tokens accumulate callbacks. A later cancel calls Cancel() on an already-disposed GrainCancellationTokenSource, and the returned Task is ignored. The same pattern appears on line 296. Wrap the registration in `using`.
                 token.Register(() => cancelSource.Cancel().ConfigureAwait(false));
 
                 var filter = filterExpression?.Compile() ?? s_allTrue;
@@ -355,6 +356,7 @@ namespace Democrite.Framework.Node.Storages
         /// </summary>
         private IMemoryStorageRepositoryGrain<TEntityId> GetTargetStorage(TEntityId entityUid)
         {
+            //TO-DO from Opus 5.5 Non-deterministic hash used for shard routing : string.GetHashCode is randomized per process in .NET Core, so different silos, clients or restarts route the same string id to different storage grains, which causes duplicate records and failed deletes. Use a stable hash such as XxHash32 or a deterministic FNV over the key bytes.
             var containerIndex = Math.Abs(entityUid.GetHashCode() % this._dataBalancer.Length);
             var storageShelveGrain = this._dataBalancer[containerIndex];
 

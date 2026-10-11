@@ -192,6 +192,7 @@ namespace Democrite.Framework.Node.References
             RefIdHelper.Explode(definitionRefId, out var _, out var ns, out var sni);
 
             if (!string.Equals(ns, RefIdHelper.DEFAULT_NAMESPACE, StringComparison.OrdinalIgnoreCase))
+                //TO-DO from Opus 5.5 Unescaped compiled regex built per request : The ref id (and the sni on line 197) is used as a raw pattern, so '.', '?' and '+' match unintended definitions. RegexOptions.Compiled on every call is also very expensive. Use Regex.Escape and drop Compiled (or cache the regexes); a plain string comparison is probably enough.
                 return new Regex(definitionRefId.OriginalString, RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
             return new Regex("^" + RefIdHelper.REF_SCHEMA + "://" + definitionRefId.UserInfo + "@([a-zA-Z0-9.]+)/" + sni + "$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -374,6 +375,7 @@ namespace Democrite.Framework.Node.References
             this._locker.EnterReadLock();
             try
             {
+                //TO-DO from Opus 5.5 Blocking remote call on every ref lookup : Every reference resolution makes a synchronous grain-service round trip while holding the ReaderWriterLockSlim read lock, which serializes a hot path on network latency. Cache the ETag check with a short TTL or a change notification, and call it asynchronously outside the lock.
                 needRefresh = this._currentRegistryEtag == null || this._typeReference.IsToUpdate(this._currentRegistryEtag) == false;
             }
             finally

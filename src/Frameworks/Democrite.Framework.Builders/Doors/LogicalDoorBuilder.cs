@@ -144,6 +144,7 @@ namespace Democrite.Framework.Builders.Doors
                                                     BuildErrorSR.MandatoryValueMissing);
             }
 
+            //TO-DO from Opus 5.5 Variable validation checks counts only : Only the counts are compared, so variables assigned to ids that are not listened sources pass. The missing-variable check (Contains, case-insensitive) treats 'a' as present in 'ab'. A variable name reused for two ids crashes later in ToDictionary. Check that the id sets are equal, match whole-word tokens, and reject duplicate names in AssignVariableName.
             if (allVariablesIds.Length != this._variableNames.Count(g => g.Key != this._rootDoorBuilder.Uid))
             {
                 throw new InvalidParameterException(nameof(BooleanLogicalDoorDefinition.VariableNames),

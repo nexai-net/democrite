@@ -4,6 +4,7 @@
 
 	<PropertyGroup>
 		<IsPackable>false</IsPackable>
+		<!--TO-DO from Opus 5.5 Empty orphan test project : This test project has no source file and is not listed in Democrite.sln, yet it still references Moq and AutoFixture. Remove it, or add it to the solution with real tests.-->
 		<IsTestProject>true</IsTestProject>
 	</PropertyGroup>
 

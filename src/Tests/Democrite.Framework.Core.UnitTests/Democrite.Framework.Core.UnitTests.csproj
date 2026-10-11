@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+	<!--TO-DO from Opus 5.5 Test projects require a solution build : Eight test csproj files (Builders, Cluster, Core, Node.Abstraction, Node.Signals, Node, Test.Interfaces, Test.VGrains) use $(SolutionDir) in Import and ProjectReference paths. 'dotnet build' or 'dotnet test' on a single project therefore resolves '\SharedFrameworkAssmblyInfo.props' and fails. Use relative paths or $(MSBuildThisFileDirectory), or centralize them in a Directory.Build.props.-->
 	<Import Project="$(SolutionDir)\SharedFrameworkAssmblyInfo.props" />
 
 	<PropertyGroup>

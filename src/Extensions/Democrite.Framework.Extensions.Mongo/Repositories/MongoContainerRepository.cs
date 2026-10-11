@@ -88,6 +88,7 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         #region Methods
 
         /// <inheritdoc />
+        //TO-DO from Opus 5.5 Container repo skips init and read-only checks : None of the container repository's IRepository<TEntity> methods (delete, get, push) call EnsureInitialized, so MongoCollection is null (NullReferenceException) if one of them is the first call. The delete methods also never call CheckReadOnly, so MongoReadonlyContainerRepository can delete data. Call CheckReadOnly() and await EnsureInitialized(token) at the start of each method.
         public async Task<bool> DeleteRecordAsync(IReadOnlyCollection<TEntityId> entityIds, CancellationToken cancellationToken)
         {
             var deleteMany = await this.MongoCollection.DeleteManyAsync(Builders<TContainer>.Filter.In(this._containedIdAccess, entityIds), cancellationToken);

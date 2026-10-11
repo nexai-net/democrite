@@ -117,6 +117,7 @@ namespace Democrite.Framework.Node.ThreadExecutors
                     {
                         var foreachIndexedState = foreachThreadsHandler.ToDictionary(k => k, kv => kv.Token.GetCurrentDoneThreadState());
 
+                        //TO-DO from Opus 5.5 Partial foreach failures silently dropped : An error is raised only when every inner thread failed. Otherwise the failed items are filtered out of the results and the stage reports success with missing elements. Raise or report an error when any inner thread failed, or make the behaviour an explicit option.
                         if (foreachIndexedState.All(i => i.Value.Exception != null))
                         {
                             var aggreException = foreachIndexedState.Where(f => f.Value?.Exception != null)

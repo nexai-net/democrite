@@ -6,6 +6,7 @@ using System.ComponentModel;
 [Serializable]
 [GenerateSerializer]
 [ImmutableObject(true)]
+//TO-DO from Opus 5.5 Public types in global namespace : All TupleContainer types are declared without a namespace, polluting consumers' global namespace and risking collisions. Move them into Democrite.Framework.DataModel.
 public record struct TupleContainer<TArg0>(TArg0 Item0);
 
 [Immutable]

@@ -36,6 +36,7 @@ namespace Democrite.Framework.Extensions.Docker
         /// <inheritdoc />
         public IDockerClientProxy GetLocal(string? configurationName = null, string? minimalVersionRequired = null)
         {
+            //TO-DO from Opus 5.5 Racy lazy client, version argument ignored : The lazy initialization is not thread-safe (concurrent callers create and leak extra DockerClient instances). After the first call, minimalVersionRequired and configurationName are silently ignored, and the client is never disposed because the factory is not IDisposable. Use Lazy<T> or a ConcurrentDictionary keyed by (configuration, version) and dispose the clients with the factory.
             if (this._localClient is null)
             {
                 this._localClient = new DockerClientConfiguration()

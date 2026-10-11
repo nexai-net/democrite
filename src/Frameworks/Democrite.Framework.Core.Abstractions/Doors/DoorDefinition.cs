@@ -185,6 +185,7 @@ namespace Democrite.Framework.Core.Abstractions.Doors
                     isValid = false;
             }
 
+            //TO-DO from Opus 5.5 Duplicated validation block : The 'No signal or door are listen' check is copy-pasted twice, logging the warning twice. Remove the duplicate.
             if (this.SignalSourceIds.Count == 0 && this.DoorSourceIds.Count == 0)
             {
                 logger.OptiLog(warningLevel, "No signal or door are listen");

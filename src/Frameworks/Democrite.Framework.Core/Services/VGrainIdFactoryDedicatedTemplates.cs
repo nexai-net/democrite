@@ -213,6 +213,7 @@ namespace Democrite.Framework.Core.Services
                                            ex);
                         }
 
+                        //TO-DO from Opus 5.5 Fallback builders recompiled on every call : When a fallback is used the compiled builder is not cached, so every id generation for that grain type rebuilds and compiles expression trees while holding the global write lock, which serializes all callers. Cache fallback builders too, or cache a negative result per type.
                         if (builder.primaryGenerator != null && !useFallBack)
                             this._cachedBuilder.Add(vgrainType, builder);
                     }
@@ -370,6 +371,7 @@ namespace Democrite.Framework.Core.Services
             else if (string.IsNullOrEmpty(template) && !string.IsNullOrEmpty(fallback))
             {
                 useFallback = true;
+                //TO-DO from Opus 5.5 Fallback produces string for Guid/long keys : For Guid or Long id formats the fallback returns a raw string constant, so VGrainId.GetVGrainIdPrimaryValue<Guid/long>() later throws InvalidCastException. Parse the fallback into the expected type (Guid.Parse / long.Parse) here and at line 466.
                 return Expression.Constant(fallback, typeof(string));
             }
 

@@ -24,6 +24,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <!--TO-DO from Opus 5.5 Critical components lack test coverage : Cluster has a single test (NetworkInspector), and Node.Blackboard.Abstractions has one. Client, Node.Cron, Node.StreamQueue, the Mongo and Docker extensions and the Bags have no test project at all. Add at least Orleans TestingHost-based tests for cluster join, client connection, cron triggering and the Mongo storage providers.-->
 	  <ProjectReference Include="$(SolutionDir)\src\Frameworks\Democrite.Framework.Cluster\Democrite.Framework.Cluster.csproj" />
 	</ItemGroup>
 

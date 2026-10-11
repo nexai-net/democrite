@@ -261,6 +261,7 @@ namespace Democrite.Framework.Node.Deferred
         }
 
         /// <inheritdoc />
+        //TO-DO from Opus 5.5 Public async void loses exceptions : An exception thrown while notifying observers escapes as an unobserved async void exception, which can crash the silo, and callers cannot await the cleanup. Make it a private async Task and await it in CleanUpDeferredWork and ConsumeDeferredResponseAsync.
         public async void CleanUpDeferredWorkImpl(DeferredWork work)
         {
             work.ChangeStatus(DeferredStatusEnum.Cleanup, this._timeManager);

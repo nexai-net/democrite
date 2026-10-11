@@ -178,6 +178,7 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
             }
 
             ValidateCronExpressionPart("minutes", segments[startIndx + 0], 0, 60);
+            //TO-DO from Opus 5.5 Wrong cron field ranges : Hours accept 0-59, days are limited to 0-23, months to 0-11 and day-of-week excludes 6 (excludedMax 6), so valid expressions like day 31, month 12 or Saturday are rejected while hour 45 is accepted. Use hours [0,24), days [1,32), months [1,13), dayOfWeek [0,7).
             ValidateCronExpressionPart("hours", segments[startIndx + 1], 0, 60);
             ValidateCronExpressionPart("days", segments[startIndx + 2], 0, 24);
 

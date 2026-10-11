@@ -113,6 +113,7 @@ namespace Democrite.Framework.Core.Abstractions.Doors
         /// <inheritdoc />
         protected override int OnDoorGetHashCode()
         {
+            //TO-DO from Opus 5.5 GetHashCode inconsistent with Equals : Equals compares VariableNames by content but the hash uses the dictionary reference, so equal doors get different hashes (broken in HashSet/Dictionary); SequenceEqual on a dictionary is also order dependent. Hash and compare the dictionary entries order-independently.
             return HashCode.Combine(this.LogicalFormula, this.VariableNames, this.UseCurrentDoorStatus);
         }
 

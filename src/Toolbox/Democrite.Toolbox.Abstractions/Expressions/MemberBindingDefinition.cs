@@ -18,6 +18,7 @@ namespace Democrite.Toolbox.Abstractions.Expressions
     [DataContract]
     [ImmutableObject(true)]
 
+    //TO-DO from Opus 5.5 Missing KnownType for convert binding : MemberInputConvertBindingDefinition derives from MemberBindingDefinition but is not declared as a KnownType, so DataContract serialization of bindings that contain a convert fails. Add [KnownType(typeof(MemberInputConvertBindingDefinition))].
     [KnownType(typeof(MemberInputConstantBindingDefinition<>))]
     [KnownType(typeof(MemberInputParameterBindingDefinition))]
     [KnownType(typeof(MemberInputCallChainBindingDefinition))]

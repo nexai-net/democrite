@@ -77,6 +77,7 @@ namespace Democrite.Framework.Node.Triggers
         }
 
         /// <inheritdoc />
+        //TO-DO from Opus 5.5 ReadOnly method mutates grain state concurrently : ReceiveSignalAsync is marked [ReadOnly], so calls interleave, yet FireTriggerAsync mutates _dataSourceProviders, State.DataSourceProviderStates and the stream cache across awaits. Interleaved signals can race (for example a double Add) and corrupt the data-source cursor state. Remove [ReadOnly] or guard the mutations explicitly.
         [OneWay]
         [ReadOnly]
         public Task ReceiveSignalAsync(SignalMessage signal)

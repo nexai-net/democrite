@@ -99,6 +99,7 @@ namespace Democrite.Toolbox.WPF.UI.Services
                 var previousContent = this._contentControl.Content;
                 this._contentControl.Content = null;
 
+                //TO-DO from Opus 5.5 Replaced view's view model is never disposed : previousContent is the view (a FrameworkElement), not the view model, so the previous DataContext is never disposed. Closed windows likewise never go through ViewClosed. Call base.ViewClosed((previousContent as FrameworkElement)?.DataContext) here and in WindowView_Closed so persistence rules are respected.
                 if (previousContent is IDisposable dispo)
                     dispo.Dispose();
 

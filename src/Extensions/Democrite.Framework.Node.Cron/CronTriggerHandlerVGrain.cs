@@ -45,6 +45,7 @@ namespace Democrite.Framework.Node.Cron
 
         private static readonly Regex s_allExceptSpacesReg = new Regex(@"[^\s]+");
 
+        //TO-DO from Opus 5.5 Period cap uses microseconds, not milliseconds : uint.MaxValue microseconds is only about 71 minutes, so any hourly or daily cron gets an early wake-up that falls outside the 1-minute window, which with the line 109 bug removes the reminder. The Orleans limit is in milliseconds: use TimeSpan.FromMilliseconds(uint.MaxValue - 10).
         private static readonly TimeSpan s_maxAllowPeriodTime = TimeSpan.FromMicroseconds(uint.MaxValue - 10);
 
         private readonly IDataSourceProviderFactory _inputSourceProviderFactory;
@@ -106,6 +107,7 @@ namespace Democrite.Framework.Node.Cron
 
             await EnsureTriggerDefinitionAsync(this.VGrainLifecycleToken);
 
+            //TO-DO from Opus 5.5 Late cron tick permanently unregisters reminder : UpdateNextTriggerAndCheckCanExecuteAsync re-registers the reminder and then returns false whenever the tick lands more than 1 minute away from an occurrence (late reminder, silo restart, capped period); the caller then calls DeactivateReminderAsync and removes the reminder it just registered, so the cron stops for good. Only skip the fire in that case: do not unregister the reminder, and only deactivate when the definition is disabled or has no next occurrence.
             if (this.Enabled == false || !await UpdateNextTriggerAndCheckCanExecuteAsync(this.TriggerDefinition, this.VGrainLifecycleToken))
             {
                 await DeactivateReminderAsync();

@@ -245,6 +245,7 @@
 
             var files = new List<Uri>();
 
+            //TO-DO from Opus 5.5 Dockerfile instruction injection via file names : Package file names, env.Image/Tag and ExtraDockerFileInstructions are concatenated into the Dockerfile without validation, so a name containing a quote or newline injects arbitrary RUN instructions into the image build. Validate and escape file names (reject quotes and newlines, use relative paths) and validate the image reference format.
             foreach (var f in definition.PackageFiles)
             {
                 copyDockerfileBuilder.Append("COPY [\"");
