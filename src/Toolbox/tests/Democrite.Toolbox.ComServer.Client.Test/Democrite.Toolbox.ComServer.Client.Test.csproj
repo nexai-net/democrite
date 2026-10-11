@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+
+	<Import Project="..\..\..\..\SharedFrameworkAssmblyInfo.props" />
+
+	<PropertyGroup>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>false</IsTestProject>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="Microsoft.Extensions.Configuration" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\Democrite.Toolbox.WPF.UI\Democrite.Toolbox.WPF.UI.csproj" />
+	  <ProjectReference Include="..\..\Democrite.Toolbox.WPF\Democrite.Toolbox.WPF.csproj" />
+	  <ProjectReference Include="..\Democrite.Toolbox.ComServer.Abstraction.Test\Democrite.Toolbox.ComServer.Abstraction.Test.csproj" />
+	</ItemGroup>
+
+</Project>

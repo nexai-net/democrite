@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="../SharedFrameworkAssmblyInfo.props" />
+
+	<PropertyGroup>
+		<OutputType>exe</OutputType>
+	</PropertyGroup>
+	
+	<ItemGroup>
+	  <ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+	  <ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Node\Democrite.Framework.Node.csproj" />
+	  <ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Signals\Democrite.Framework.Node.Signals.csproj" />
+	  <ProjectReference Include="..\..\..\src\Extensions\Bags\Democrite.Framework.Bag.DebugTools\Democrite.Framework.Bag.DebugTools.csproj" />
+	</ItemGroup>
+</Project>

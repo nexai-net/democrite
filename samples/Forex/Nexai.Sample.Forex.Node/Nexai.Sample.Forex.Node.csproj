@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="$(SolutionDir)\SharedFrameworkAssmblyInfo.props" />
+
+	<PropertyGroup>
+
+		<IsPackable>false</IsPackable>
+		<OutputType>Exe</OutputType>
+
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\src\Extensions\Bags\Democrite.Framework.Bag.Web.Abstractions\Democrite.Framework.Bag.Web.Abstractions.csproj" />
+		<ProjectReference Include="..\..\..\src\Extensions\Bags\Democrite.Framework.Bag.Web\Democrite.Framework.Bag.Web.csproj" />
+		<ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Signals\Democrite.Framework.Node.Signals.csproj" />
+		<ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Cron\Democrite.Framework.Node.Cron.csproj" />
+		<ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="$(SolutionDir)Nexai.Sample.Forex.VGrain\Nexai.Sample.Forex.VGrain.csproj" />
+		<ProjectReference Include="$(SolutionDir)Nexai.Sample.Forex.VGrain.Abstractions\Nexai.Sample.Forex.VGrain.Abstractions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>

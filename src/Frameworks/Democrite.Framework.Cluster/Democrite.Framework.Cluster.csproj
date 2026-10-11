@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="..\..\..\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\SharedFrameworkDemocriteAssemblyInfo.props" />
+
+	<PropertyGroup>
+
+		<IsPackable>true</IsPackable>
+		<Description>Democrite common cluster library use by node and client side.</Description>
+
+		<PackageTags>Democrite;Orleans;Multi-VGrain;Multi-Grain;Multi-Agent;Framework;Cluster</PackageTags>
+
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\Toolbox\Democrite.Toolbox.Configuration\Democrite.Toolbox.Configuration.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Democrite.Framework.Cluster.Abstractions\Democrite.Framework.Cluster.Abstractions.csproj" />
+		<ProjectReference Include="..\Democrite.Framework.Core.Abstractions\Democrite.Framework.Core.Abstractions.csproj" />
+		<ProjectReference Include="..\Democrite.Framework.Core\Democrite.Framework.Core.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="..\..\..\SharedFrameworkAssmblyInfo.props" />
+
+	<PropertyGroup>
+		<IsPackable>true</IsPackable>
+		<Description>ToolBox that contains extention for WPF dev.</Description>
+		<PackageTags>toolbox;dotnet;helpers;configurations;WPF</PackageTags>
+	</PropertyGroup>
+	
+	<ItemGroup>
+	  <ProjectReference Include="..\Democrite.Toolbox.WPF.Abstractions\Democrite.Toolbox.WPF.Abstractions.csproj" />
+	  <ProjectReference Include="..\Democrite.Toolbox\Democrite.Toolbox.csproj" />
+	</ItemGroup>
+
+</Project>

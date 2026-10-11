@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Extensions\Bags\Democrite.Framework.Bag.DebugTools\Democrite.Framework.Bag.DebugTools.csproj" />
+    <ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+    <ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Node\Democrite.Framework.Node.csproj" />
+    <ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Cron\Democrite.Framework.Node.Cron.csproj" />
+    <ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Signals\Democrite.Framework.Node.Signals.csproj" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="Unchase.Swashbuckle.AspNetCore.Extensions" />
+  </ItemGroup>
+
+</Project>

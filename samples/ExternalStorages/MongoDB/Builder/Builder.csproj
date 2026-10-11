@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="../SharedFrameworkAssemblyInfo.props" />
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<CopyDebugSymbolFilesFromPackages>true</CopyDebugSymbolFilesFromPackages>
+		<CopyDocumentationFilesFromPackages>true</CopyDocumentationFilesFromPackages>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+	  <ProjectReference Include="..\..\..\..\src\Extensions\Democrite.Framework.Extensions.Mongo.Abstractions\Democrite.Framework.Extensions.Mongo.Abstractions.csproj" />
+	  <ProjectReference Include="..\..\..\..\src\Extensions\Bags\Democrite.Framework.Bag.DebugTools\Democrite.Framework.Bag.DebugTools.csproj" />
+	  <PackageReference Include="MongoDB.Driver" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\Common\Common.csproj" />
+	</ItemGroup>
+
+</Project>
