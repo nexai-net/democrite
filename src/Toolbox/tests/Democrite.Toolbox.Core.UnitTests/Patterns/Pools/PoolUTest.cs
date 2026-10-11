@@ -9,7 +9,6 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Pools
     using NFluent;
 
     using System;
-    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading.Tasks;
@@ -51,35 +50,34 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Pools
         }
 
         /// <summary>
-        /// Thread safe pool test
+        /// Thread safe pool test: deterministic invariants (no scheduling dependent outcome)
+        ///   1) Items handed out concurrently are never shared (all distinct)
+        ///   2) Once released, the items are reused by the next concurrent requests
         /// </summary>
-        //TO-DO from Opus 5.5 async void test is non-deterministic : ThreadSafe_Pool is declared async void, so xUnit cannot reliably observe its completion or exceptions. The assertion IsStrictlyLessThan(TEST_SIZE) also fails whenever all 120 Task.Run callbacks get an item before any release happens. Change the signature to async Task and make the scenario deterministic, for example with a Barrier/SemaphoreSlim that controls when items are released, or by asserting on pool invariants rather than on the scheduling outcome.
         [Fact]
-        public async void ThreadSafe_Pool()
+        public async Task ThreadSafe_Pool()
         {
             const int TEST_SIZE = 120;
 
-            var pool = new Pool<TestPoolItem>(500);
+            using (var pool = new ThreadSafePool<TestPoolItem>(500))
+            {
+                // 1) Concurrent requests without release: every request gets its own item
+                var firstRound = await Task.WhenAll(Enumerable.Range(0, TEST_SIZE)
+                                                              .Select(_ => Task.Run(() => pool.GetItem())));
 
-            var items = new ConcurrentBag<TestPoolItem>();
+                Check.That(firstRound.Distinct().Count()).IsEqualTo(TEST_SIZE);
 
-            var tasks = Enumerable.Range(0, TEST_SIZE)
-                                  .Select(i =>
-                                  {
-                                      return Task.Run(() =>
-                                      {
-                                          var it = pool.GetItem();
+                // Release everything: the pool keeps them (capacity 500 > TEST_SIZE)
+                foreach (var item in firstRound)
+                    item.Release();
 
-                                          items.Add(it);
+                // 2) Concurrent requests after release: all items come back from the pool
+                var secondRound = await Task.WhenAll(Enumerable.Range(0, TEST_SIZE)
+                                                               .Select(_ => Task.Run(() => pool.GetItem())));
 
-                                          if (i > 5)
-                                              it.Release();
-                                      });
-                                  }).ToArray();
-
-            await tasks.SafeWhenAllAsync(default);
-
-            Check.That(items.Distinct().Count()).IsStrictlyLessThan(TEST_SIZE);
+                Check.That(secondRound.Distinct().Count()).IsEqualTo(TEST_SIZE);
+                Check.That(secondRound.All(i => firstRound.Contains(i))).IsTrue();
+            }
         }
     }
 }

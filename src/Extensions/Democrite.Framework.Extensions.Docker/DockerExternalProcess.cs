@@ -16,6 +16,7 @@ namespace Democrite.Framework.Extensions.Docker
     using System;
     using System.Collections.Generic;
     using System.Runtime.CompilerServices;
+    using System.Text.RegularExpressions;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -23,13 +24,15 @@ namespace Democrite.Framework.Extensions.Docker
     {
         #region Fields
 
+        private static readonly TimeSpan s_disposeKillTimeout = TimeSpan.FromSeconds(30);
+
         private readonly ArtifactExecutableDockerEnvironmentDefinition _env;
         private readonly IDockerClientFactory _dockerClientFactory;
         private readonly ArtifactExecutableDefinition _definition;
 
         private readonly string _executor;
         private readonly Config _config;
-        private readonly bool _deamonMode;
+        private readonly bool _daemonMode;
         private string? _containerId;
 
         private Abstractions.IDockerClientProxy? _client;
@@ -50,8 +53,7 @@ namespace Democrite.Framework.Extensions.Docker
             : base(arguments, cancellationToken)
         {
             this._definition = definition;
-            //TO-DO from Opus 5.5 Executor path lowercased breaks Linux containers : Lowercasing the executor changes case-sensitive paths and commands inside Linux containers (for example '/app/MyScript.py'), so the container command fails. Keep the executor as provided; container names are lowercased separately.
-            this._executor = executor.ToLowerInvariant();
+            this._executor = executor;
 
             this._dockerClientFactory = dockerClientFactory;
 
@@ -71,7 +73,7 @@ namespace Democrite.Framework.Extensions.Docker
             };
 
             this._env = env;
-            this._deamonMode = arguments.FirstOrDefault(a => a.StartsWith("--port")) is not null;
+            this._daemonMode = arguments.FirstOrDefault(a => a.StartsWith("--port")) is not null;
 
             //this._client = new DockerClientConfiguration()
             //                        .CreateClient(string.IsNullOrEmpty(env.MinimalRequiredVersion)
@@ -99,8 +101,18 @@ namespace Democrite.Framework.Extensions.Docker
         /// <inheritdoc />
         protected override void OnDisposeThreadSafeBegin()
         {
-            //TO-DO from Opus 5.5 Blocking sync-over-async in Dispose : Dispose blocks a thread on KillAsync, which has no timeout or token, so an unreachable Docker daemon hangs disposal indefinitely and holds a thread-pool thread. Implement IAsyncDisposable, or at least use a bounded timeout token for the kill and remove calls.
-            Task.Run(async () => await KillAsync(default)).Wait();
+            // Dispose is synchronous : bound the container cleanup to avoid hanging when the docker daemon is unreachable
+            using (var timeout = new CancellationTokenSource(s_disposeKillTimeout))
+            {
+                try
+                {
+                    Task.Run(() => KillAsync(timeout.Token)).Wait(s_disposeKillTimeout + TimeSpan.FromSeconds(1));
+                }
+                catch
+                {
+                }
+            }
+
             this._client?.Dispose();
         }
 
@@ -115,14 +127,19 @@ namespace Democrite.Framework.Extensions.Docker
                 Tty = true
             };
 
-            if (this._deamonMode)
+            var gpuRequest = BuildGpuDeviceRequest(this._env.GPURequirement);
+            if (gpuRequest is not null)
             {
-                createParam.HostConfig = new HostConfig()
+                createParam.HostConfig ??= new HostConfig();
+                createParam.HostConfig.DeviceRequests = new List<DeviceRequest>() { gpuRequest };
+            }
+
+            if (this._daemonMode)
+            {
+                createParam.HostConfig ??= new HostConfig();
+                createParam.HostConfig.ExtraHosts = new List<string>()
                 {
-                    ExtraHosts = new List<string>()
-                    {
-                        "host.docker.internal:host-gateway"
-                    }
+                    "host.docker.internal:host-gateway"
                 };
 
                 var executableSeparator = this._definition.ExecutorArgumentSeparator ?? ':';
@@ -245,8 +262,7 @@ namespace Democrite.Framework.Extensions.Docker
             try
             {
                 var containerStatus = await client.Containers.InspectContainerAsync(this._containerId, cancellationToken);
-                //TO-DO from Opus 5.5 Exited container reported as alive : State.Dead is true only in a rare Docker state; an exited or stopped container has Dead == false, so the stale executor is reused. Return containerStatus.State.Running instead.
-                return containerStatus.State.Dead == false;
+                return containerStatus?.State?.Running == true;
             }
             catch { }
 
@@ -261,7 +277,7 @@ namespace Democrite.Framework.Extensions.Docker
             try
             {
                 if (!string.IsNullOrEmpty(this._containerId))
-                    await client.Containers.KillContainerAsync(this._containerId, new ContainerKillParameters());
+                    await client.Containers.KillContainerAsync(this._containerId, new ContainerKillParameters(), cancellationToken);
             }
             catch
             {
@@ -274,7 +290,7 @@ namespace Democrite.Framework.Extensions.Docker
                     await client.Containers.RemoveContainerAsync(this._containerId, new ContainerRemoveParameters()
                     {
                         Force = true,
-                    });
+                    }, cancellationToken);
                 }
             }
             catch
@@ -291,23 +307,28 @@ namespace Democrite.Framework.Extensions.Docker
         {
             var client = GetDockerClient();
 
-            //TO-DO from Opus 5.5 Stale container cleanup misses stopped containers : ContainersListParameters without All = true lists only running containers, so a stopped container with the same name is not removed and CreateContainerAsync fails with a name conflict. The 'name' filter is also a substring/regex match combined with Limit = 1, so it can force-remove an unrelated container. Set All = true, use an anchored name ('^/name$'), drop Limit and pass the cancellation token.
+            // All = true to also retrieve stopped containers; docker 'name' filter is a regex, anchor it on the exact name
             var existingContainer = await client.Containers.ListContainersAsync(new ContainersListParameters()
             {
-                Limit = 1,
+                All = true,
                 Filters = new Dictionary<string, IDictionary<string, bool>>()
                 {
                     { "name", new Dictionary<string, bool>()
                     {
-                        { containerName, true }
+                        { "^/" + Regex.Escape(containerName) + "$", true }
                     } }
                 }
-            });
+            }, this.CancellationToken);
 
             if (existingContainer.Count > 0)
             {
+                var exactName = "/" + containerName;
+
                 foreach (var existing in existingContainer)
                 {
+                    if (existing.Names is null || !existing.Names.Contains(exactName, StringComparer.Ordinal))
+                        continue;
+
                     try
                     {
                         await client.Containers.RemoveContainerAsync(existing.ID, new ContainerRemoveParameters() { Force = true }, this.CancellationToken);
@@ -318,6 +339,43 @@ namespace Democrite.Framework.Extensions.Docker
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds the docker device request equivalent to the CLI option '--gpus <paramref name="gpuRequirement"/>'
+        /// </summary>
+        /// <remarks>
+        ///     Supported values : 'all', a device count (ex: '2') or device ids/uuids separated by ',' (optionally prefixed by 'device=')
+        /// </remarks>
+        private static DeviceRequest? BuildGpuDeviceRequest(string? gpuRequirement)
+        {
+            if (string.IsNullOrWhiteSpace(gpuRequirement))
+                return null;
+
+            var request = new DeviceRequest()
+            {
+                Capabilities = new List<IList<string>>() { new List<string>() { "gpu" } }
+            };
+
+            var requirement = gpuRequirement.Trim().Trim('"');
+
+            if (string.Equals(requirement, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                request.Count = -1;
+            }
+            else if (long.TryParse(requirement, out var count))
+            {
+                request.Count = count;
+            }
+            else
+            {
+                if (requirement.StartsWith("device=", StringComparison.OrdinalIgnoreCase))
+                    requirement = requirement.Substring("device=".Length);
+
+                request.DeviceIDs = requirement.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            }
+
+            return request;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -50,12 +50,12 @@ namespace Democrite.Framework.Builders
                                                                                                                          Func<ISequencePipelineBuilder<TSplitInputMessage>, ISequencePipelineBuilder<TOutput>> foreachConfigStage,
                                                                                                                          Action<IDefinitionMetaDataWithDisplayNameBuilder>? metaDataBuilderAction = null,
                                                                                                                          Guid? fixUid = null)
+            where TInputMessage : IEnumerable<TSplitInputMessage>
         {
             var eachSequenceBuilder = stageBuilder.CreateSubSequence(nameof(Foreach));
             var pipeline = eachSequenceBuilder.RequiredInput<TSplitInputMessage>();
 
             var result = foreachConfigStage(pipeline);
-            //TO-DO from Opus 5.5 Foreach overload lacks IEnumerable constraint : This overload iterates the input itself (no memberAccess) but, unlike the third overload, does not constrain TInputMessage to IEnumerable<TSplitInputMessage>. A non-collection input compiles and fails only at runtime. Add `where TInputMessage : IEnumerable<TSplitInputMessage>`.
             return stageBuilder.EnqueueStage<IEnumerable<TOutput>>(new SequencePipelineForeachStageBuilder<TInputMessage>(eachSequenceBuilder, metaDataBuilderAction: metaDataBuilderAction, fixUid: fixUid));
         }
 

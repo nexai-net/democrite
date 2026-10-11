@@ -43,6 +43,11 @@ namespace Democrite.Framework.Node.References
     {
         #region Fields
 
+        /// <summary>
+        /// Duration during which a successful registry up-to-date check is trusted without a remote call
+        /// </summary>
+        private const long REGISTRY_CHECK_TTL_MS = 2000;
+
         private readonly IDemocriteTypeReferenceGrainServiceClient _typeReference;
         private readonly IDefinitionProvider _definitionProvider;
 
@@ -58,6 +63,7 @@ namespace Democrite.Framework.Node.References
         private readonly ReaderWriterLockSlim _locker;
 
         private string? _currentRegistryEtag;
+        private long _lastRegistryCheckTick;
 
         #endregion
 
@@ -192,10 +198,9 @@ namespace Democrite.Framework.Node.References
             RefIdHelper.Explode(definitionRefId, out var _, out var ns, out var sni);
 
             if (!string.Equals(ns, RefIdHelper.DEFAULT_NAMESPACE, StringComparison.OrdinalIgnoreCase))
-                //TO-DO from Opus 5.5 Unescaped compiled regex built per request : The ref id (and the sni on line 197) is used as a raw pattern, so '.', '?' and '+' match unintended definitions. RegexOptions.Compiled on every call is also very expensive. Use Regex.Escape and drop Compiled (or cache the regexes); a plain string comparison is probably enough.
-                return new Regex(definitionRefId.OriginalString, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                return new Regex("^" + Regex.Escape(definitionRefId.OriginalString) + "$", RegexOptions.IgnoreCase);
 
-            return new Regex("^" + RefIdHelper.REF_SCHEMA + "://" + definitionRefId.UserInfo + "@([a-zA-Z0-9.]+)/" + sni + "$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            return new Regex("^" + Regex.Escape(RefIdHelper.REF_SCHEMA + "://" + definitionRefId.UserInfo) + "@([a-zA-Z0-9.]+)/" + Regex.Escape(sni) + "$", RegexOptions.IgnoreCase);
         }
 
         /// <summary>
@@ -206,19 +211,27 @@ namespace Democrite.Framework.Node.References
             if (!RefIdHelper.IsRefId(refId))
                 return null;
 
-            await EnsureRegistryIsUptoDate(token);
             ReferenceTarget? target = null;
 
             bool toAddToCache = false;
 
-            this._locker.EnterReadLock();
-            try
+            // Registry up-to-date check is cached a short time; if nothing is found from a cached check, force a remote check and retry once
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                target = SafeGetReferenceTarget(refId, out toAddToCache);
-            }
-            finally
-            {
-                this._locker.ExitReadLock();
+                var remoteChecked = await EnsureRegistryIsUptoDate(token, force: attempt > 0);
+
+                this._locker.EnterReadLock();
+                try
+                {
+                    target = SafeGetReferenceTarget(refId, out toAddToCache);
+                }
+                finally
+                {
+                    this._locker.ExitReadLock();
+                }
+
+                if (target is not null || remoteChecked)
+                    break;
             }
 
             if (toAddToCache && target is not null)
@@ -369,19 +382,33 @@ namespace Democrite.Framework.Node.References
         /// <summary>
         /// Ensures the registry is upto date.
         /// </summary>
-        private async ValueTask EnsureRegistryIsUptoDate(CancellationToken token)
+        /// <returns><c>true</c> if the remote registry has been checked; <c>false</c> if the last check is recent enough to be trusted</returns>
+        private async ValueTask<bool> EnsureRegistryIsUptoDate(CancellationToken token, bool force = false)
         {
             bool needRefresh = false;
+            string? currentRegistryEtag;
             this._locker.EnterReadLock();
             try
             {
-                //TO-DO from Opus 5.5 Blocking remote call on every ref lookup : Every reference resolution makes a synchronous grain-service round trip while holding the ReaderWriterLockSlim read lock, which serializes a hot path on network latency. Cache the ETag check with a short TTL or a change notification, and call it asynchronously outside the lock.
-                needRefresh = this._currentRegistryEtag == null || this._typeReference.IsToUpdate(this._currentRegistryEtag) == false;
+                currentRegistryEtag = this._currentRegistryEtag;
             }
             finally
             {
                 this._locker.ExitReadLock();
             }
+
+            // Avoid a remote round trip on every lookup
+            if (!force &&
+                currentRegistryEtag is not null &&
+                Environment.TickCount64 - Volatile.Read(ref this._lastRegistryCheckTick) < REGISTRY_CHECK_TTL_MS)
+            {
+                return false;
+            }
+
+            needRefresh = currentRegistryEtag == null || await this._typeReference.IsToUpdate(currentRegistryEtag) == false;
+
+            if (!needRefresh)
+                Volatile.Write(ref this._lastRegistryCheckTick, Environment.TickCount64);
 
             if (needRefresh)
             {
@@ -399,10 +426,11 @@ namespace Democrite.Framework.Node.References
                                 {
                                     // A most recent call have been made
                                     if (lastToken.Content.IsCancellationRequested)
-                                        return;
+                                        return true;
 
                                     this._currentRegistryEtag = lastRegistry.Etag;
                                     SafeBuildIndexRegistry(lastRegistry);
+                                    Volatile.Write(ref this._lastRegistryCheckTick, Environment.TickCount64);
                                 }
                                 finally
                                 {
@@ -417,6 +445,8 @@ namespace Democrite.Framework.Node.References
                     }
                 }
             }
+
+            return true;
         }
 
         /// <summary>

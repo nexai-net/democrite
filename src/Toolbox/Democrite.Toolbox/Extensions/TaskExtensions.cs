@@ -146,10 +146,12 @@ namespace System.Threading.Tasks
         {
             logger ??= NullLogger.Instance;
 
-            //TO-DO from Opus 5.5 ValueTasks consumed multiple times : Each ValueTask is converted with AsTask() here and then read again in AggregateResults (IsCompletedSuccessfully, Result, AsTask().Exception). A ValueTask backed by an IValueTaskSource may only be consumed once, so this gives undefined results. Convert each ValueTask to a Task once and reuse those Tasks (the same issue appears at lines 234-266).
-            await SafeWhenAllAsync(tasks.Select(t => t.AsTask()).ToReadOnly(), token);
+            // A ValueTask must be consumed only once : convert each one to a Task once and only use the Tasks after
+            var asTasks = tasks.Select(t => t.AsTask()).ToArray();
 
-            return await AggregateResults<TData>(tasks, logger);
+            await SafeWhenAllAsync((IReadOnlyCollection<Task>)asTasks, token);
+
+            return await AggregateResults<TData>(asTasks, logger);
         }
 
         /// <summary>
@@ -232,24 +234,19 @@ namespace System.Threading.Tasks
         {
             logger ??= NullLogger.Instance;
 
-            var tasksCollection = tasks.Where(t => t.IsCompleted == false);
+            // A ValueTask must be consumed only once : convert each one to a Task once and only use the Tasks after
+            var asTasks = tasks.Select(t => t.AsTask()).ToArray();
 
-            while (tasksCollection.Any())
+            try
             {
-                try
-                {
-                    await Task.WhenAll(tasksCollection.Select(t => t.AsTask()));
-                }
-                catch
-                {
-                }
-                finally
-                {
-                }
+                await Task.WhenAll(asTasks);
+            }
+            catch
+            {
             }
 
             var results = new HashSet<TTaskResult>(tasks.Count * 2);
-            foreach (var task in tasks)
+            foreach (var task in asTasks)
             {
                 if (task.IsCompletedSuccessfully)
                 {
@@ -260,11 +257,11 @@ namespace System.Threading.Tasks
                 {
                     continue;
                 }
-                else if (task.AsTask().Exception != null)
+                else if (task.Exception != null)
                 {
                     logger.OptiLog(LogLevel.Error,
                                    "Aggregate - exception : {exception}]",
-                                   task.AsTask().Exception);
+                                   task.Exception);
                 }
             }
 
@@ -326,11 +323,16 @@ namespace System.Threading.Tasks
                 {
                     continue;
                 }
-                else if (task.AsTask().Exception != null)
+                else if (task.IsFaulted)
                 {
-                    logger.OptiLog(LogLevel.Error,
-                                   "Aggregate - exception : {exception}]",
-                                   task.AsTask().Exception);
+                    // Consume the ValueTask only once
+                    var exception = task.AsTask().Exception;
+                    if (exception != null)
+                    {
+                        logger.OptiLog(LogLevel.Error,
+                                       "Aggregate - exception : {exception}]",
+                                       exception);
+                    }
                 }
             }
 

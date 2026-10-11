@@ -12,31 +12,30 @@ namespace Democrite.UnitTests.ToolKit.Remoting
     using H.Formatters;
     using H.Pipes;
 
-    using Moq;
-
     using Newtonsoft.Json;
+
+    using NSubstitute;
+    using NSubstitute.Core;
 
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Linq;
-    using System.Linq.Expressions;
     using System.Reflection;
     using System.Threading.Tasks;
 
     /// <summary>
-    /// 
+    /// Substitute call handler that redirect all <typeparamref name="TService"/> calls to a remote service
     /// </summary>
-    /// <seealso cref="System.Dynamic.DynamicObject" />
-    internal sealed class DynamicRemotingSiloService<TService> : Mock<TService>
+    internal sealed class DynamicRemotingSiloService<TService> : ICallHandler
         where TService : class
     {
         #region Fields
 
         private static readonly TimeSpan s_callTimeout;
-        private static readonly MethodInfo s_anyMthd;
 
         private readonly Dictionary<Guid, TaskCompletionSource<object?>> _callRegistry;
+        private readonly HashSet<MethodInfo> _mappedMethods;
         private readonly string _uniqueInstanceId;
         private readonly SemaphoreSlim _locker;
 
@@ -48,8 +47,6 @@ namespace Democrite.UnitTests.ToolKit.Remoting
 
         static DynamicRemotingSiloService()
         {
-            s_anyMthd = typeof(It).GetMethod(nameof(It.IsAny)) ?? throw new ArgumentNullException("It.IsAny");
-
             s_callTimeout = Debugger.IsAttached ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(10);
         }
 
@@ -61,18 +58,50 @@ namespace Democrite.UnitTests.ToolKit.Remoting
             this._locker = new SemaphoreSlim(1);
             this._uniqueInstanceId = uniqueInstanceId.Replace(nameof(IRemoteControllerService) + "_", "");
             this._callRegistry = new Dictionary<Guid, TaskCompletionSource<object?>>();
+            this._mappedMethods = new HashSet<MethodInfo>();
+
+            this.Object = Substitute.For<TService>();
         }
+
+        #endregion
+
+        #region Properties
+
+        /// <summary>
+        /// Gets the substitute instance that redirect calls to the remote service
+        /// </summary>
+        public TService Object { get; }
 
         #endregion
 
         #region Methods
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         public void Map()
         {
             MapRec(typeof(TService), new HashSet<Type>());
+
+            SubstitutionContext.Current.GetCallRouterFor(this.Object)
+                                       .RegisterCustomCallHandlerFactory(_ => this);
+        }
+
+        /// <inheritdoc />
+        public RouteAction Handle(ICall call)
+        {
+            var mthd = call.GetMethodInfo();
+
+            if (!this._mappedMethods.Contains(mthd.IsGenericMethod ? mthd.GetGenericMethodDefinition() : mthd))
+                return RouteAction.Continue();
+
+            if (mthd.ReturnType == typeof(void))
+            {
+                SolverVoidMethod(call);
+                return RouteAction.Return(null);
+            }
+
+            return RouteAction.Return(SolverVoidMethodWithReturn(call));
         }
 
         /// <summary>
@@ -93,8 +122,16 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         {
             try
             {
+                // Acquire the lock BEFORE the try/finally that releases it
                 await this._locker.WaitAsync(token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
 
+            try
+            {
                 if (this._client?.IsConnected == true)
                     return;
 
@@ -163,7 +200,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         /// <summary>
         /// Remote call without expected result
         /// </summary>
-        private void SolverVoidMethod(IInvocation invocation)
+        private void SolverVoidMethod(ICall invocation)
         {
             Task.Run(async () => await SolverVoidMethodAsync(invocation)).GetAwaiter().GetResult();
             return;
@@ -172,7 +209,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         /// <summary>
         /// Remote call with result
         /// </summary>
-        private object? SolverVoidMethodWithReturn(IInvocation invocation)
+        private object? SolverVoidMethodWithReturn(ICall invocation)
         {
             var result = Task.Run(async () => await SolverVoidMethodAsync(invocation)).GetAwaiter().GetResult();
             return result;
@@ -181,8 +218,10 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         /// <summary>
         /// Async remote call with result
         /// </summary>
-        private async Task<object?> SolverVoidMethodAsync(IInvocation invocation)
+        private async Task<object?> SolverVoidMethodAsync(ICall invocation)
         {
+            var invocationMethod = invocation.GetMethodInfo();
+
             using (var timeoutCallToken = new CancellationTokenSource(s_callTimeout))
             {
                 await EnsureConnectToRemoteAsync(timeoutCallToken.Token);
@@ -192,11 +231,10 @@ namespace Democrite.UnitTests.ToolKit.Remoting
                 var taskCompletion = new TaskCompletionSource<object?>();
                 var execId = Guid.NewGuid();
 
-                //TO-DO from Opus 5.5 Semaphore released even when wait fails : The WaitAsync call sits inside the try and Release() inside the finally, so a timeout or cancellation during WaitAsync still releases a permit it never acquired. That corrupts the lock (extra permit or SemaphoreFullException). Call WaitAsync before the try block. Entries added to _callRegistry are also never removed.
+                // Acquire the lock BEFORE the try : a cancelled/timed out wait must not release a permit it never acquired
+                await this._locker.WaitAsync(timeoutCallToken.Token);
                 try
                 {
-                    await this._locker.WaitAsync(timeoutCallToken.Token);
-
                     this._callRegistry.Add(execId, taskCompletion);
                 }
                 finally
@@ -204,67 +242,82 @@ namespace Democrite.UnitTests.ToolKit.Remoting
                     this._locker.Release();
                 }
 
-                var callSerialized = JsonConvert.SerializeObject(new MethodCallMessage(invocation.Method.Name,
-
-                                                                                       // raisedErrorIfDuplicate: true => Prevent duplicate because message sender came from another AppDomain
-                                                                                       (invocation.Method.IsGenericMethod
-                                                                                                ? invocation.Method.GetGenericMethodDefinition()
-                                                                                                : invocation.Method).GetUniqueId(raisedErrorIfDuplicate: true),
-
-                                                                                       TypedArgument.From(invocation.Arguments,
-                                                                                                          invocation.Method.GetParameters().Select(s => s.ParameterType).ToArray()),
-                                                                                       invocation.Method.ReflectedType?.AssemblyQualifiedName),
-
-                                                                 TestRemotingService.SerializationSettings);
-
-                var callMsg = new RemoteCallMessage(this._uniqueInstanceId, execId, callSerialized, string.Empty, false);
-
-                await this._client.WriteAsync(callMsg, timeoutCallToken.Token);
-                timeoutCallToken.Token.ThrowIfCancellationRequested();
-
-                //TO-DO from Opus 5.5 Remote call awaits without timeout : The response TaskCompletionSource is awaited without s_callTimeout, so a lost response hangs the test forever, and the ThrowIfCancellationRequested on the next line never runs. Use taskCompletion.Task.WaitAsync(timeoutCallToken.Token) and remove the registry entry in a finally block.
-                await taskCompletion.Task;
-                timeoutCallToken.Token.ThrowIfCancellationRequested();
-
-                var returnType = invocation.Method.ReturnType;
-
-                var noReturn = returnType != null &&
-
-                               (returnType == typeof(void) ||
-                                returnType == typeof(Task) ||
-                                returnType == typeof(ValueTask));
-
-                // Convert result to well format
-                var resultInst = taskCompletion.Task.Result;
-
-                if (returnType != null && (resultInst?.GetType().IsAssignableTo(returnType) ?? false) == false)
+                try
                 {
-                    var extendInfo = returnType.GetTypeInfoExtension();
+                    var callSerialized = JsonConvert.SerializeObject(new MethodCallMessage(invocationMethod.Name,
 
-                    if (extendInfo.IsTask || extendInfo.IsValueTask)
+                                                                                           // raisedErrorIfDuplicate: true => Prevent duplicate because message sender came from another AppDomain
+                                                                                           (invocationMethod.IsGenericMethod
+                                                                                                    ? invocationMethod.GetGenericMethodDefinition()
+                                                                                                    : invocationMethod).GetUniqueId(raisedErrorIfDuplicate: true),
+
+                                                                                           TypedArgument.From(invocation.GetArguments(),
+                                                                                                              invocationMethod.GetParameters().Select(s => s.ParameterType).ToArray()),
+                                                                                           invocationMethod.ReflectedType?.AssemblyQualifiedName),
+
+                                                                     TestRemotingService.SerializationSettings);
+
+                    var callMsg = new RemoteCallMessage(this._uniqueInstanceId, execId, callSerialized, string.Empty, false);
+
+                    await this._client.WriteAsync(callMsg, timeoutCallToken.Token);
+                    timeoutCallToken.Token.ThrowIfCancellationRequested();
+
+                    // Bounded wait : a lost response must fail the call after s_callTimeout instead of hanging forever
+                    await taskCompletion.Task.WaitAsync(timeoutCallToken.Token);
+
+                    var returnType = invocationMethod.ReturnType;
+
+                    var noReturn = returnType != null &&
+
+                                   (returnType == typeof(void) ||
+                                    returnType == typeof(Task) ||
+                                    returnType == typeof(ValueTask));
+
+                    // Convert result to well format
+                    var resultInst = taskCompletion.Task.Result;
+
+                    if (returnType != null && (resultInst?.GetType().IsAssignableTo(returnType) ?? false) == false)
                     {
-                        if (extendInfo.IsTask)
+                        var extendInfo = returnType.GetTypeInfoExtension();
+
+                        if (extendInfo.IsTask || extendInfo.IsValueTask)
                         {
-                            if (noReturn)
-                                resultInst = Task.CompletedTask;
-                            else
-                                resultInst = extendInfo.GetSpecifcTypeExtend<ITaskTypeInfoEnhancer>().GetTaskFromResult(resultInst);
+                            if (extendInfo.IsTask)
+                            {
+                                if (noReturn)
+                                    resultInst = Task.CompletedTask;
+                                else
+                                    resultInst = extendInfo.GetSpecifcTypeExtend<ITaskTypeInfoEnhancer>().GetTaskFromResult(resultInst);
+                            }
+                            else if (extendInfo.IsValueTask)
+                            {
+                                if (noReturn)
+                                    resultInst = ValueTask.CompletedTask;
+                                else
+                                    resultInst = extendInfo.GetSpecifcTypeExtend<IValueTaskTypeInfoEnhancer>().GetValueTaskFromResult(resultInst);
+                            }
                         }
-                        else if (extendInfo.IsValueTask)
+                        else
                         {
-                            if (noReturn)
-                                resultInst = ValueTask.CompletedTask;
-                            else
-                                resultInst = extendInfo.GetSpecifcTypeExtend<IValueTaskTypeInfoEnhancer>().GetValueTaskFromResult(resultInst);
+                            throw new InvalidCastException("[Remote][" + invocationMethod + "] Could not convert remote response type " + resultInst!.GetType() + " to method return type " + returnType);
                         }
                     }
-                    else
+
+                    return resultInst;
+                }
+                finally
+                {
+                    // Always unregister the pending call (success, error, timeout)
+                    await this._locker.WaitAsync();
+                    try
                     {
-                        throw new InvalidCastException("[Remote][" + invocation.Method + "] Could not convert remote response type " + resultInst!.GetType() + " to method return type " + returnType);
+                        this._callRegistry.Remove(execId);
+                    }
+                    finally
+                    {
+                        this._locker.Release();
                     }
                 }
-
-                return resultInst;
             }
         }
 
@@ -280,25 +333,8 @@ namespace Democrite.UnitTests.ToolKit.Remoting
 
             foreach (var mthd in type.GetMethods())
             {
-                var parameters = (from p in mthd.GetParameters()
-                                  let anyType = (p.ParameterType.IsGenericParameter == true)
-                                                        // Must at least have an interface in constraint to be able to mock properly
-                                                        ? p.ParameterType.GetGenericParameterConstraints().FirstOrDefault(t => t.IsInterface) ?? typeof(It.IsAnyType)
-                                                        : p.ParameterType
-                                  select Expression.Call(null, s_anyMthd.MakeGenericMethod(anyType))).ToArray();
-
-                var inst = Expression.Parameter(typeof(TService), "s");
-
-                if (mthd.ReturnParameter.ParameterType == typeof(void))
-                {
-                    SetupVoidCall(inst, mthd, parameters);
-                }
-                else
-                {
-                    var m = GetType().GetMethod(nameof(SetupFuncCall), BindingFlags.NonPublic | BindingFlags.Instance);
-                    Debug.Assert(m != null);
-                    m.MakeGenericMethod(mthd.ReturnType).Invoke(this, new object[] { inst, mthd, parameters });
-                }
+                // Generic methods are redirected for any generic arguments
+                this._mappedMethods.Add(mthd.IsGenericMethod ? mthd.GetGenericMethodDefinition() : mthd);
             }
 
             if (type.BaseType != null && type.BaseType != typeof(object))
@@ -313,36 +349,19 @@ namespace Democrite.UnitTests.ToolKit.Remoting
             }
         }
 
-        private void SetupVoidCall(ParameterExpression inst, MethodInfo mthd, IEnumerable<Expression> parameters)
-        {
-            base.Setup(Expression.Lambda<Action<TService>>(Expression.Call(inst, mthd, parameters), inst))
-                .Callback(new InvocationAction(SolverVoidMethod));
-        }
-
-        private void SetupFuncCall<TReturn>(ParameterExpression inst, MethodInfo mthd, IEnumerable<Expression> parameters)
-        {
-            if (mthd.IsGenericMethod)
-                mthd = mthd.GetDefaultGenericImplementationMethod();
-
-#pragma warning disable CS8621 // Nullability of reference types in return type doesn't match the target delegate (possibly because of nullability attributes).
-            base.Setup(Expression.Lambda<Func<TService, TReturn>>(Expression.Call(inst, mthd, parameters), inst))
-                .Returns(new InvocationFunc(SolverVoidMethodWithReturn));
-#pragma warning restore CS8621 // Nullability of reference types in return type doesn't match the target delegate (possibly because of nullability attributes).
-        }
-
         #endregion
     }
 
     internal static class DyncamicRemotingSiloServiceExtension
     {
         /// <summary>
-        /// Creates dynamic remote handler
+        /// Creates dynamic remote handler and return the substitute instance that redirect calls to remote service
         /// </summary>
-        public static Mock? CreateRemoteServiceFrom(this Type service, string uniqueInstanceId)
+        public static object? CreateRemoteServiceFrom(this Type service, string uniqueInstanceId)
         {
             var finalType = typeof(DynamicRemotingSiloService<>).MakeGenericType(service);
 
-            var mockController = (Mock?)Activator.CreateInstance(finalType, new object[] { uniqueInstanceId });
+            var mockController = Activator.CreateInstance(finalType, new object[] { uniqueInstanceId });
 
             ArgumentNullException.ThrowIfNull(mockController);
 
@@ -351,7 +370,10 @@ namespace Democrite.UnitTests.ToolKit.Remoting
             ArgumentNullException.ThrowIfNull(initMthd);
             initMthd.Invoke(mockController, Array.Empty<object>());
 
-            return mockController;
+            var objProp = mockController.GetType().GetProperty(nameof(DynamicRemotingSiloService<string>.Object));
+
+            ArgumentNullException.ThrowIfNull(objProp);
+            return objProp.GetValue(mockController);
         }
     }
 }

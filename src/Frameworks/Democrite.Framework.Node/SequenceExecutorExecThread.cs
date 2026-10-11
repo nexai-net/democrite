@@ -484,7 +484,6 @@ namespace Democrite.Framework.Node.Models
                     ArgumentNullException.ThrowIfNull(this._currentStage);
 
                     // Force in another thread to ensure GetSecurityThreadHandler will not dead lock
-                    //TO-DO from Opus 5.5 Post-process failures silently swallowed : ContinueWith(EndPostProcess) always completes successfully and ignores a faulted or cancelled post-process. A failed foreach aggregation therefore lets the sequence continue with a stale _nextStageInput. Await the post-process directly and call State.SetError on failure, or rethrow t.Exception in EndPostProcess.
                     return Task.Factory.StartNew(async () => await tmp(this._currentStage, GetSecurityThreadHandler)
                                                                                 .ContinueWith(EndPostProcess))
                                        .Unwrap();
@@ -560,17 +559,25 @@ namespace Democrite.Framework.Node.Models
         /// </summary>
         private void EndPostProcess(Task<StageStepResult> t)
         {
-            if (t.IsCompleted && !t.IsCanceled && !t.IsFaulted)
+            this._locker.Wait();
+            try
             {
-                this._locker.Wait();
-                try
+                if (t.IsCanceled || t.IsFaulted)
                 {
-                    this._nextStageInput = ProcessStageStepResultOutput(t.Result);
+                    // Post process failed, stop the thread in error instead of continuing with a stale input
+                    this.State.SetError((Exception?)t.Exception ?? new OperationCanceledException("Post process cancelled"));
+                    return;
                 }
-                finally
-                {
-                    this._locker.Release();
-                }
+
+                this._nextStageInput = ProcessStageStepResultOutput(t.Result);
+            }
+            catch (Exception ex)
+            {
+                this.State.SetError(ex);
+            }
+            finally
+            {
+                this._locker.Release();
             }
         }
 

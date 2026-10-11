@@ -55,8 +55,10 @@ namespace Democrite.Framework.Core.Repositories
             var storageName = request.StorageName ?? ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME;
             var configurationName = request.ConfigurationName ?? ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME;
 
-            //TO-DO from Opus 5.5 Repository cache key ignores IsReadOnly : ReadOnlyRepository and Repository both request IReadOnlyRepository<,> with the same config and storage, so whichever is built first is cached and returned to the other. A writable Repository can then get a read-only instance (CheckReadOnly throws or _repo is null). Include request.IsReadOnly in the cache key.
-            var fullConfigKey = configurationName + "##" + storageName + "##" + (typeof(TTargetRepo).GetTypeInfoExtension().FullShortName ?? typeof(TTargetRepo).Name);
+            // Request options that change the built instance (read-only, discriminator usage) MUST be part of the cache key
+            var fullConfigKey = configurationName + "##" + storageName + "##" + (typeof(TTargetRepo).GetTypeInfoExtension().FullShortName ?? typeof(TTargetRepo).Name)
+                                + "##" + (request.IsReadOnly ? "RO" : "RW")
+                                + "##" + (request.PreventAnyKindOfDiscriminatorUsage ? "NoDiscriminator" : "Discriminator");
             var entityTraits = typeof(TEntity);
 
             this._cacheLocker.EnterReadLock();

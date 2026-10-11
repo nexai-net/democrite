@@ -8,6 +8,7 @@ namespace Democrite.Framework.Node.Signals
     using Democrite.Framework.Core.Abstractions;
     using Democrite.Framework.Core.Abstractions.Attributes;
     using Democrite.Framework.Core.Abstractions.Signals;
+    using Democrite.Framework.Node.Signals.Models;
 
     using Microsoft.Extensions.Logging;
 
@@ -115,10 +116,20 @@ namespace Democrite.Framework.Node.Signals
         {
             await EnsureInitializedAsync(default);
 
-            var subscriptions = this.State!.Subscriptions;
+            var subscriptions = this.State!.Subscriptions.ToArray();
 
-            //TO-DO from Opus 5.5 One failing subscriber blocks signal fan-out : Subscribers are awaited one after another with no try/catch, so a single dead or failing receiver throws and the remaining subscribers never get the signal; latency also grows with the number of subscribers. Dispatch in parallel (Task.WhenAll) and catch and log each failure, optionally removing dead subscriptions.
-            foreach (var sub in subscriptions)
+            // Dispatch in parallel, a failing subscriber must not prevent the others to receive the signal
+            await Task.WhenAll(subscriptions.Select(sub => SendSignalToSubscriberAsync(sub, signal)));
+
+            return signal.Uid;
+        }
+
+        /// <summary>
+        /// Sends the signal to a subscriber, failures are logged and not propagated
+        /// </summary>
+        private async Task SendSignalToSubscriberAsync(SignalSubscription sub, SignalMessage signal)
+        {
+            try
             {
                 ISignalReceiver? grain = null;
                 ISignalReceiverReadOnly? grainReadOnly = null;
@@ -146,8 +157,10 @@ namespace Democrite.Framework.Node.Signals
                 if (grainReadOnly is not null)
                     await grainReadOnly.ReceiveSignalAsync(signal!);
             }
-
-            return signal.Uid;
+            catch (Exception ex)
+            {
+                this.Logger.LogError(ex, "Signal {signalName} ({signalUid}) delivery to subscriber {subscriptionUid} failed", signal.From?.SourceDefinitionName, signal.Uid, sub.Uid);
+            }
         }
 
         /// <summary>

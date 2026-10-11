@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<Import Project="$(SolutionDir)\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\SharedFrameworkAssemblyInfo.props" />
 
 	<PropertyGroup>
 		<IsPackable>false</IsPackable>
@@ -10,7 +10,7 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="Microsoft.Orleans.TestingHost" />
-		<PackageReference Include="Moq" />
+		<PackageReference Include="NSubstitute" />
 		<PackageReference Include="NFluent" />
 		<PackageReference Include="System.ComponentModel.TypeConverter" />
 		<PackageReference Include="xunit" />
@@ -25,11 +25,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="$(SolutionDir)\src\Frameworks\Democrite.Framework.Node\Democrite.Framework.Node.csproj" />
-		<ProjectReference Include="$(SolutionDir)\src\Tests\Democrite.UnitTests.ToolKit\Democrite.UnitTests.ToolKit.csproj" />
-		<ProjectReference Include="$(SolutionDir)\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
-		<ProjectReference Include="$(SolutionDir)\src\Tests\Democrite.Test.VGrains\Democrite.Test.VGrains.csproj" />
-		<ProjectReference Include="$(SolutionDir)\src\Tests\Democrite.Test.Interfaces\Democrite.Test.Interfaces.csproj" />
+		<ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Node\Democrite.Framework.Node.csproj" />
+		<ProjectReference Include="..\..\..\src\Tests\Democrite.UnitTests.ToolKit\Democrite.UnitTests.ToolKit.csproj" />
+		<ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+		<ProjectReference Include="..\..\..\src\Tests\Democrite.Test.VGrains\Democrite.Test.VGrains.csproj" />
+		<ProjectReference Include="..\..\..\src\Tests\Democrite.Test.Interfaces\Democrite.Test.Interfaces.csproj" />
 	</ItemGroup>
 
 </Project>

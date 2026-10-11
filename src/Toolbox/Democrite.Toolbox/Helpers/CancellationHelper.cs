@@ -23,9 +23,12 @@ namespace Democrite.Toolbox.Helpers
         /// <summary>
         /// Create a timeout <see cref="CancellationToken"/>
         /// </summary>
+        /// <remarks>
+        ///     The underlying timer-backed <see cref="CancellationTokenSource"/> is never disposed (kept alive until the timeout):
+        ///     do not use it in hot paths, prefer <see cref="DisposableTimeout(TimeSpan?)"/> or timeout-based wait APIs.
+        /// </remarks>
         public static CancellationToken Timeout(TimeSpan? timeout = null)
         {
-            //TO-DO from Opus 5.5 Timer-backed CTS leaked on every lock : Each call allocates a CancellationTokenSource with a live timer that is never disposed, and every ThreadSafePool lock goes through this path. Combined with the finalizable DisposableAction, this adds heavy allocation and timer churn in hot paths. Use SemaphoreSlim.Wait(TimeSpan) directly, or return a disposable scope that owns the CTS.
             return new CancellationTokenSource(timeout ?? s_defaultScopeTimeout).Token;
         }
 
@@ -53,11 +56,12 @@ namespace Democrite.Toolbox.Helpers
             ArgumentNullException.ThrowIfNull(setterNewSource);
 #endif
 
+            var lockTimeout = timeout ?? s_defaultScopeTimeout;
+            if (!locker.Wait(lockTimeout))
+                throw new TimeoutException("Failed to acquired single access scope lock in " + lockTimeout);
+
             try
             {
-                //TO-DO from Opus 5.5 Lock timeout ignored, then semaphore over-released : The bool returned by Wait(timeout) is ignored, so after a timeout the code runs without the lock and the finally block still calls Release(). That breaks mutual exclusion and can throw SemaphoreFullException. Check the result and throw TimeoutException without releasing. The token parameter of CancellationContext.Lock is also ignored.
-                locker.Wait(timeout ?? s_defaultScopeTimeout);
-
                 var current = getCurrentSource();
                 current?.Cancel();
 

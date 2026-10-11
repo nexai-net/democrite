@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<Import Project="$(SolutionDir)\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\SharedFrameworkAssemblyInfo.props" />
 
 	<PropertyGroup>
 		<IsPackable>false</IsPackable>
@@ -23,8 +23,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="$(SolutionDir)\src\Extensions\Democrite.Framework.Node.Signals\Democrite.Framework.Node.Signals.csproj" />
-	  <ProjectReference Include="$(SolutionDir)\src\tests\Democrite.UnitTests.ToolKit\Democrite.UnitTests.ToolKit.csproj" />
+	  <ProjectReference Include="..\..\..\src\Extensions\Democrite.Framework.Node.Signals\Democrite.Framework.Node.Signals.csproj" />
+	  <ProjectReference Include="..\..\..\src\Tests\Democrite.UnitTests.ToolKit\Democrite.UnitTests.ToolKit.csproj" />
 	  <ProjectReference Include="..\..\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
 	</ItemGroup>
 </Project>

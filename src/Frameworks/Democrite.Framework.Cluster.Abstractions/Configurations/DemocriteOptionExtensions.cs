@@ -21,7 +21,8 @@ namespace Democrite.Framework.Configurations
         /// Adds option from implementation or instance
         /// </summary>
         /// <returns>
-        ///     Return option
+        ///     Return option; null if no option could be determined at registration time
+        ///     (ex: option already registered through a factory, resolved later by the service provider)
         /// </returns>
         public static TOption? AddOptionFromInstOrConfig<TOption>(this IServiceCollection services,
                                                                   IConfiguration configuration,
@@ -41,26 +42,25 @@ namespace Democrite.Framework.Configurations
                     if (serviceDesc.ImplementationInstance is TOption optionInst)
                         return optionInst;
 
-                    //TO-DO from Opus 5.5 Service factory invoked with null provider : Calling ImplementationFactory(null) crashes with NullReferenceException for any factory that resolves dependencies, and builds an extra instance outside DI. Avoid executing factories at registration time: defer option resolution or require an instance registration (same issue at line 61).
-                    if (serviceDesc.ImplementationFactory != null)
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-                        return (TOption)serviceDesc.ImplementationFactory(null);
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
+                    // Factory (or type) registrations are resolved by the DI container at runtime;
+                    // they MUST NOT be executed at registration time (no service provider available).
+                    // The value is unknown here, caller must skip any value dependent setup.
+                    if (serviceDesc.ImplementationFactory != null || serviceDesc.ImplementationType != null)
+                        return null;
 
                     throw new InvalidOperationException("Option already registred but could not extract the value");
                 }
 
-                serviceDesc = services.First(s => s.ServiceType == typeof(IOptions<TOption>));
+                serviceDesc = services.FirstOrDefault(s => s.ServiceType == typeof(IOptions<TOption>));
 
                 if (serviceDesc != null)
                 {
                     if (serviceDesc.ImplementationInstance is IOptions<TOption> optionIncInst)
                         return optionIncInst.Value;
 
-                    if (serviceDesc.ImplementationFactory != null)
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-                        return ((IOptions<TOption>)serviceDesc.ImplementationFactory(null))?.Value;
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
+                    // Same as above : factory registration could not be resolved without a service provider
+                    if (serviceDesc.ImplementationFactory != null || serviceDesc.ImplementationType != null)
+                        return null;
 
                     throw new InvalidOperationException("Option already registred but could not extract the value");
                 }

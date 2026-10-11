@@ -108,10 +108,8 @@ namespace Democrite.Framework.Core.Executions
         {
             var specialisedMethod = s_genericCallMethod.MakeGenericMethod(expectedOutput);
 
-            //TO-DO from Opus 5.5 Invalid ValueTask cast always throws : s_genericCallMethod resolves RunAsync<T>(CancellationToken), which returns Task<IExecutionResult<T>>, so casting the boxed result to ValueTask always throws InvalidCastException and IExecutionLauncher.RunAsync(Type, ...) can never succeed. Cast to Task instead (as ExecutionRefLauncher does), then await it and read the result.
-            var result = (ValueTask)specialisedMethod.Invoke(this, new object[] { token })!;
+            var task = (Task)specialisedMethod.Invoke(this, new object[] { token })!;
 
-            var task = result.AsTask();
             await task;
 
             var taskResult = task.GetResult<IExecutionResult>();
@@ -159,6 +157,27 @@ namespace Democrite.Framework.Core.Executions
         }
 
         /// <summary>
+        /// Cancel the execution context and log (instead of throwing) any cancellation propagation failure
+        /// </summary>
+        private async Task SafeCancelAsync(IExecutionContext? executionContext)
+        {
+            if (executionContext is null)
+                return;
+
+            try
+            {
+                await executionContext.Cancel();
+            }
+            catch (Exception ex)
+            {
+                this._logger.OptiLog(LogLevel.Warning,
+                                     "[{context}] Execution cancellation propagation failed : {exception}",
+                                     executionContext.CurrentExecutionId,
+                                     ex);
+            }
+        }
+
+        /// <summary>
         ///     Generic execution able to call <typeparamref name="TExecutor"/> with diffent parameter
         /// </summary> 
         private async Task<IExecutionResult> RunImplAsync<TExpectedOutput>(CancellationToken token, bool fire = false)
@@ -175,7 +194,20 @@ namespace Democrite.Framework.Core.Executions
 
             var input = GetInput();
 
-            var executor = await this._vgrainProvider.GetVGrainAsync<TVGrain>(input, executionContext, this._logger);
+            TVGrain executor;
+            var forcedGrainId = GetForcedGrainId();
+
+            if (forcedGrainId is not null)
+            {
+                if (this._vgrainProvider is not VGrainProvider vgrainProvider)
+                    throw new NotSupportedException("Forcing vgrain id is not supported by the vgrain provider " + this._vgrainProvider?.GetType());
+
+                executor = (TVGrain)vgrainProvider.GetVGrainWithForcedId(typeof(TVGrain), forcedGrainId.Value);
+            }
+            else
+            {
+                executor = await this._vgrainProvider.GetVGrainAsync<TVGrain>(input, executionContext, this._logger);
+            }
 
             if (executionContext is IExecutionContextInternal executionContextInternal)
             {
@@ -190,16 +222,17 @@ namespace Democrite.Framework.Core.Executions
                 token.ThrowIfCancellationRequested();
 
                 // Link cancel event to orlean grain cancel system
-                //TO-DO from Opus 5.5 Undisposed registration keeps execution context alive : The registration is never disposed, so a long-lived caller token roots every ExecutionContext and launcher ever run with it, and can cancel finished executions later. The ValueTask returned by Cancel() is also dropped. Dispose the registration after awaiting the execution.
-                token.Register((ctx) => (ctx as IExecutionContext)?.Cancel(), executionContext, useSynchronizationContext: false);
-
-                executionTask = OnRunAsync<TExpectedOutput>(executor, input, executionContext, fire);
-                await executionTask;
+                // Registration disposed once the execution is done to avoid rooting the context on long-lived tokens
+                using (token.Register((ctx) => _ = SafeCancelAsync(ctx as IExecutionContext), executionContext, useSynchronizationContext: false))
+                {
+                    executionTask = OnRunAsync<TExpectedOutput>(executor, input, executionContext, fire);
+                    await executionTask;
+                }
             }
             catch (Exception ex)
             {
                 exception = ex;
-                await executionContext.Cancel();
+                await SafeCancelAsync(executionContext);
             }
 
             if (exception is null &&
@@ -248,6 +281,14 @@ namespace Democrite.Framework.Core.Executions
         /// Gets the input based on configuration.
         /// </summary>
         protected abstract object? GetInput();
+
+        /// <summary>
+        /// Gets the grain id the caller explicitly requested; null to let the provider build it from input and context.
+        /// </summary>
+        protected virtual IdSpan? GetForcedGrainId()
+        {
+            return null;
+        }
 
         /// <summary>
         /// Generates <see cref="IExecutionContext"/> based on configuration.

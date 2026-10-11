@@ -98,6 +98,21 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
         }
 
         /// <inheritdoc />
+        protected override bool OnEquals(TriggerDefinition other)
+        {
+            return other is StreamTriggerDefinition otherStream &&
+                   this.StreamSourceDefinitionUid == otherStream.StreamSourceDefinitionUid &&
+                   this.FixedMaxConcurrentProcess == otherStream.FixedMaxConcurrentProcess &&
+                   this.RelativeMaxConcurrentProcess == otherStream.RelativeMaxConcurrentProcess;
+        }
+
+        /// <inheritdoc />
+        protected override int OnGetHashCode()
+        {
+            return HashCode.Combine(this.StreamSourceDefinitionUid, this.FixedMaxConcurrentProcess, this.RelativeMaxConcurrentProcess);
+        }
+
+        /// <inheritdoc />
         protected override bool OnValidate(ILogger logger, bool matchWarningAsError = false)
         {
             var valid = true;

@@ -71,9 +71,8 @@ namespace Democrite.Framework.Core.Abstractions.Sequence
 
             this._indexedNextStages = indexedNextStages;
 
-            //TO-DO from Opus 5.5 Re-enumerates stages instead of materialized array : stages was already materialized into arrayStages; enumerating the IEnumerable again can re-run lazy queries and yield different instances. Use arrayStages.FirstOrDefault()/LastOrDefault().
-            var inputStage = stages?.FirstOrDefault();
-            var outputStage = stages?.LastOrDefault();
+            var inputStage = arrayStages.FirstOrDefault();
+            var outputStage = arrayStages.LastOrDefault();
 
             this.Input = inputStage?.Input;
             this.Output = outputStage?.Output;

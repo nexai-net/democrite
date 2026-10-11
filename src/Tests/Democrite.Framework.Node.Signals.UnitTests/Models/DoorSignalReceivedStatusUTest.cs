@@ -168,7 +168,7 @@ namespace Democrite.Framework.Node.Signals.UnitTests.Models
             Check.That(receivedStatus.LastSignalReceived).IsNotNull();
 
             // use interserct to keep the received order
-            Check.That(receivedStatus.SignalsReceivedHistory).IsNotNull().And.CountIs(retains).And.ContainsExactly(incommingSignals.Intersect(orderedSignals.Take(retains)));
+            Check.That(receivedStatus.SignalsReceivedHistory).IsNotNull().And.CountIs(retains).And.ContainsExactly(incommingSignals.Intersect(orderedSignals.TakeLast(retains))); // keep the most recent signals
         }
 
         /// <summary>

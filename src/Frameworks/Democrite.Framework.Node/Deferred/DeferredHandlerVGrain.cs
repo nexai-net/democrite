@@ -78,14 +78,12 @@ namespace Democrite.Framework.Node.Deferred
         }
 
         /// <inheritdoc />
-        public Task CleanUpDeferredWork(Guid deferredId)
+        public async Task CleanUpDeferredWork(Guid deferredId)
         {
             var work = this.State!.GetDeferredWorkById(deferredId);
 
             if (work is not null)
-                CleanUpDeferredWorkImpl(work);
-
-            return Task.CompletedTask;
+                await CleanUpDeferredWorkImpl(work);
         }
 
         /// <inheritdoc />
@@ -99,7 +97,7 @@ namespace Democrite.Framework.Node.Deferred
             this.State!.Remove(work);
             await PushStateAsync(default);
 
-            CleanUpDeferredWorkImpl(work);
+            await CleanUpDeferredWorkImpl(work);
 
             if (work.Response is null)
                 return default;
@@ -260,9 +258,10 @@ namespace Democrite.Framework.Node.Deferred
             await this._deferredObserverManager.Notify(d => d.DeferredStatusChangedNotification(msg));
         }
 
-        /// <inheritdoc />
-        //TO-DO from Opus 5.5 Public async void loses exceptions : An exception thrown while notifying observers escapes as an unobserved async void exception, which can crash the silo, and callers cannot await the cleanup. Make it a private async Task and await it in CleanUpDeferredWork and ConsumeDeferredResponseAsync.
-        public async void CleanUpDeferredWorkImpl(DeferredWork work)
+        /// <summary>
+        /// Mark the work as cleaned up and notify observers.
+        /// </summary>
+        private async Task CleanUpDeferredWorkImpl(DeferredWork work)
         {
             work.ChangeStatus(DeferredStatusEnum.Cleanup, this._timeManager);
             await SendNotificationAsync(work);

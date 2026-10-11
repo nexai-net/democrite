@@ -132,12 +132,16 @@ namespace Democrite.Toolbox.Communications
                 using (var token = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancelToken.Content))
                 {
                     var sendUid = SendImpl(MessageType.Ping, null, out var waitingResultTask, true, token.Token, null);
-                    //TO-DO from Opus 5.5 Ping never actually waits for the pong : StartNew with an async lambda returns Task<Task>, and only the outer task is awaited, so PingAsync returns true immediately. On top of that, the Pong reply (line 260) is sent with a new message id, so the pending task could never be matched anyway. Await waitingResultTask.Task.WaitAsync(token) directly, and echo the ping's message id in the Pong.
-                    await Task.Factory.StartNew(async () => await waitingResultTask!.Task, token.Token);
+                    await waitingResultTask!.Task.WaitAsync(token.Token);
                 }
             }
             catch (OperationCanceledException)
             {
+                return false;
+            }
+            catch (WebException)
+            {
+                // Connection lost
                 return false;
             }
             return true;
@@ -153,10 +157,8 @@ namespace Democrite.Toolbox.Communications
             {
 
                 var sendUid = SendImpl(MessageType.User, data, out var waitingResultTask, true, token.Token, forceMessageId);
-                //TO-DO from Opus 5.5 AskAsync blocks on .Result and ignores timeout : Because of the Task<Task> unwrap bug, the next line's waitingResultTask.Task.Result blocks a thread synchronously until the reply arrives. This bypasses both the timeout and the cancellation token. Replace both lines with 'var results = await waitingResultTask!.Task.WaitAsync(token.Token);'.
-                await Task.Factory.StartNew(async () => await waitingResultTask!.Task, token.Token);
 
-                var results = waitingResultTask!.Task.Result;
+                var results = await waitingResultTask!.Task.WaitAsync(token.Token);
                 if (results != null && results.Any())
                     return results;
 
@@ -227,7 +229,8 @@ namespace Democrite.Toolbox.Communications
         /// <inheritdoc />
         private void OnMessageReceived(byte[] msg)
         {
-            if (msg == null || msg.Length == 0)
+            // Malformed frame : at least the message type and the message id are expected
+            if (msg == null || msg.Length < 1 + s_guidSize)
                 return;
 
             ReadOnlySpan<byte> msgSpan = msg;
@@ -244,8 +247,7 @@ namespace Democrite.Toolbox.Communications
 
                 lock (this._pendingResultTasks)
                 {
-                    //TO-DO from Opus 5.5 Pending request entries are never removed : Completed, cancelled or timed-out requests stay in _pendingResultTasks for the life of the connection, which is an unbounded leak. Use TryRemove-style logic here and remove the entry in the cancellation callback as well. Also check msg.Length >= 1 + s_guidSize before slicing, so a malformed frame cannot crash the observer.
-                    this._pendingResultTasks.TryGetValue(uid, out resultTask);
+                    this._pendingResultTasks.Remove(uid, out resultTask);
                 }
 
                 if (resultTask != null)
@@ -260,7 +262,8 @@ namespace Democrite.Toolbox.Communications
 
             if (type == MessageType.Ping)
             {
-                SendImpl(MessageType.Pong, null, out _, false, default, null);
+                // Echo the ping message id to allow the sender to match the pong
+                SendImpl(MessageType.Pong, null, out _, false, default, Guid.TryParse(msgIdStr, out var pingId) ? pingId : null);
                 return;
             }
 
@@ -290,15 +293,42 @@ namespace Democrite.Toolbox.Communications
             {
                 lock (this._pendingResultTasks)
                 {
-                    task = new TaskCompletionSource<byte[]>();
+                    task = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
                     this._pendingResultTasks.Add(msgId, task);
                 }
 
-                cancellationToken.Register((t) => ((TaskCompletionSource<byte[]>)t!).TrySetCanceled(), task);
+                var pendingTask = task;
+                cancellationToken.Register(() =>
+                {
+                    RemovePendingTask(msgId, pendingTask);
+                    pendingTask.TrySetCanceled();
+                });
             }
 
-            this._comClient.Send(msg);
+            try
+            {
+                this._comClient.Send(msg);
+            }
+            catch
+            {
+                if (task is not null)
+                    RemovePendingTask(msgId, task);
+                throw;
+            }
+
             return msgId;
+        }
+
+        /// <summary>
+        /// Removes the pending task registered for <paramref name="msgId"/> if it is still <paramref name="task"/>
+        /// </summary>
+        private void RemovePendingTask(Guid msgId, TaskCompletionSource<byte[]> task)
+        {
+            lock (this._pendingResultTasks)
+            {
+                if (this._pendingResultTasks.TryGetValue(msgId, out var current) && ReferenceEquals(current, task))
+                    this._pendingResultTasks.Remove(msgId);
+            }
         }
 
         /// <summary>

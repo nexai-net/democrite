@@ -56,9 +56,9 @@ namespace Democrite.Toolbox.Configuration
 
             if (!string.IsNullOrEmpty(parentPath))
             {
-                //TO-DO from Opus 5.5 Child key prefix match ignores separator : StartsWith(parentPath) also matches sibling sections such as "FooBar:x" for parent "Foo", so GetChildKeys returns bogus children. EndsWith(TemplatePlaceHolderName) is also case-sensitive here but case-insensitive elsewhere. Match on parentPath + ":" and use the same comparison everywhere.
-                var missingKey = this._sourceKeys.Where(s => s.StartsWith(parentPath, StringComparison.OrdinalIgnoreCase) &&
-                                                             !s.EndsWith(TemplatePlaceHolderName))
+                var parentPrefix = parentPath + Separator;
+                var missingKey = this._sourceKeys.Where(s => s.StartsWith(parentPrefix, StringComparison.OrdinalIgnoreCase) &&
+                                                             !s.EndsWith(TemplatePlaceHolderName, StringComparison.OrdinalIgnoreCase))
                                                  .Select(s =>
                                                  {
                                                      var separatorIndx = s.IndexOf(Separator, Math.Min(s.Length, parentPath.Length + 1));
@@ -115,8 +115,12 @@ namespace Democrite.Toolbox.Configuration
             {
                 var templateNames = this._source.GetChildKeys(EnumerableHelper<string>.ReadOnly, templateHost);
 
-                foreach (var templateName in templateNames.Distinct())
+                foreach (var templateName in templateNames.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
+                    // Same template name declared in multiple SharedTemplates hosts : first one wins
+                    if (templates.ContainsKey(templateName))
+                        continue;
+
                     var templateFullKey = templateHost + Separator + templateName;
 
                     var templateKeys = new HashSet<string>();
@@ -154,9 +158,9 @@ namespace Democrite.Toolbox.Configuration
                 {
                     foreach (var templateKey in templateKeys)
                     {
-                        if (sourceKeys.Add(root + templateKey))
-                            //TO-DO from Opus 5.5 Load throws for template section keys : templateKeys contains intermediate section keys that have no value, so they were never added to templateValues, and the indexer throws KeyNotFoundException during Load for any nested template. Use TryGetValue and skip or null-map missing entries. Duplicate template names across SharedTemplates hosts also make templates.Add throw.
-                            newKeyTemplateValues.Add(root + templateKey, templateValues[templateName + Separator + templateKey]);
+                        // Intermediate section keys have no value: only the key is registered (TryGet will return null for it)
+                        if (sourceKeys.Add(root + templateKey) && templateValues.TryGetValue(templateName + Separator + templateKey, out var tplValue))
+                            newKeyTemplateValues[root + templateKey] = tplValue;
                     }
                 }
             }

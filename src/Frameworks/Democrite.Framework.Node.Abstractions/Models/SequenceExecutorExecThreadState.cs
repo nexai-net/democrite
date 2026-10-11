@@ -83,9 +83,9 @@ namespace Democrite.Framework.Node.Abstractions.Models
                                                  IEnumerable<SequenceExecutorExecThreadState>? innerThreads,
                                                  Exception? exception,
                                                  bool started,
-                                                 bool done)
+                                                 bool done,
+                                                 string? errorMessage = null)
         {
-            //TO-DO from Opus 5.5 ReaderWriterLockSlim never disposed : The class derives from SafeDisposable but never overrides DisposeBegin to dispose _lock. SequenceExecutorState.Initialize also replaces MainThread without disposing the old instance, so each thread state leaks a kernel-backed lock. Dispose _lock (and the inner threads) in DisposeBegin, and dispose the replaced MainThread.
             this._lock = new ReaderWriterLockSlim();
 
             this.FlowUid = flowUid;
@@ -95,6 +95,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
             this._cursor = cursor;
             this._output = output;
             this._exception = exception;
+            this._errorMessage = errorMessage;
             this._started = started;
             this._done = done;
 
@@ -347,7 +348,7 @@ namespace Democrite.Framework.Node.Abstractions.Models
             {
                 this._cursor = null;
                 this._output = output ?? NoneType.Instance;
-                //TO-DO from Opus 5.5 Running flag never reset on completion : _running is set to true in Update and never reset. After SetJobIsDone or SetError, Running stays true (and it is not persisted in the surrogate). Set `_running = false` in SetJobIsDone and SetError, and also clear _cursor in SetError for consistency.
+                this._running = false;
                 this._done = true;
             }
             finally
@@ -384,6 +385,8 @@ namespace Democrite.Framework.Node.Abstractions.Models
 
                 this._errorMessage = message;
                 this._exception = exception;
+                this._cursor = null;
+                this._running = false;
                 this._done = true;
             }
             finally
@@ -422,24 +425,51 @@ namespace Democrite.Framework.Node.Abstractions.Models
             if (ReferenceEquals(this, other))
                 return true;
 
+            // Snapshot values (each one under its own lock) to never hold two locks at the same time
+            other.GetComparableSnapshot(out var otherCursor, out var otherErrorMessage, out var otherException, out var otherOutput, out var otherInnerThreads);
+            GetComparableSnapshot(out var cursor, out var errorMessage, out var exception, out var output, out var innerThreads);
+
+            return cursor == otherCursor &&
+                   string.Equals(errorMessage, otherErrorMessage) &&
+                   object.Equals(exception, otherException) &&
+                   object.Equals(output, otherOutput) &&
+                   this.FlowUid == other.FlowUid &&
+                   this.FlowDefinitionId == other.FlowDefinitionId &&
+                   object.Equals(this.ThreadInput, other.ThreadInput) &&
+                   innerThreads.Count == otherInnerThreads.Count &&
+                   innerThreads.All(i => otherInnerThreads.Any(ii => i.Equals(ii)));
+        }
+
+        /// <summary>
+        /// Gets a consistent snapshot of the values used by <see cref="Equals(SequenceExecutorExecThreadState?)"/>
+        /// </summary>
+        private void GetComparableSnapshot(out Guid? cursor,
+                                           out string? errorMessage,
+                                           out Exception? exception,
+                                           out object? output,
+                                           out IReadOnlyCollection<SequenceExecutorExecThreadState> innerThreads)
+        {
             this._lock.EnterReadLock();
             try
             {
-                //TO-DO from Opus 5.5 Equals uses reference equality, inconsistent hash : _output, ThreadInput, _exception and the inner threads are compared with == on object or class, which is reference equality, while GetHashCode uses their value hashes. Boxed or deserialized states never compare equal, and the Equals/GetHashCode contract is broken. Equals also holds this lock while taking other's lock, which risks a lock-ordering deadlock. Use object.Equals or SequenceEqual, and snapshot other's values before taking this lock.
-                return this._cursor == other.Cursor &&
-                       this._errorMessage == other.ErrorMessage &&
-                       this._exception == other.Exception &&
-                       this._output == other.Output &&
-                       this.FlowUid == other.FlowUid &&
-                       this.FlowDefinitionId == other.FlowDefinitionId &&
-                       this.ThreadInput == other.ThreadInput &&
-                       this._innerThreads.Count == other.InnerThreads.Count &&
-                       this._innerThreads.All(i => other.InnerThreads.Any(ii => ii == i));
+                cursor = this._cursor;
+                errorMessage = this._errorMessage;
+                exception = this._exception;
+                output = this._output;
+                innerThreads = this._innerThreads;
             }
             finally
             {
                 this._lock.ExitReadLock();
             }
+        }
+
+        /// <inheritdoc />
+        protected override void DisposeManaged()
+        {
+            // Inner threads are not disposed here because the same instances can be shared by several thread states
+            this._lock.Dispose();
+            base.DisposeManaged();
         }
 
         #endregion

@@ -51,19 +51,33 @@ namespace Democrite.Framework.Core
         static DemocriteClusterNodeInfo()
         {
             s_locker = new ReaderWriterLockSlim();
-            s_assemblies = Assembly.GetExecutingAssembly().AsEnumerable()
+            s_assemblies = ImmutableHashSet<Assembly>.Empty;
+
+            // Subscribe before taking the snapshot to avoid missing assemblies loaded in between
+            AppDomain.CurrentDomain.AssemblyLoad += CurrentDomain_AssemblyLoad;
+
+            var snapshot = Assembly.GetExecutingAssembly().AsEnumerable()
                                    .Append(Assembly.GetEntryAssembly())
                                    .Append(Assembly.GetCallingAssembly())
                                    .Append(Assembly.GetExecutingAssembly())
                                    .NotNull()
                                    .SelectMany(a => a.GetReferencedAssemblies()
-                                                     //TO-DO from Opus 5.5 Static ctor can throw TypeInitializationException : Assembly.Load on every referenced assembly inside a static constructor throws if any reference is missing (common with optional dependencies), which makes the type permanently unusable. Wrap each load in try/catch, or use AppDomain.GetAssemblies(), and subscribe to AssemblyLoad before taking the snapshot to avoid missing assemblies.
-                                                     .Select(r => Assembly.Load(r))
+                                                     .Select(r => TryLoadAssembly(r))
+                                                     .NotNull()
                                                      .Append(a))
+                                   .Concat(AppDomain.CurrentDomain.GetAssemblies())
                                    .Distinct()
-                                   .ToImmutableHashSet();
+                                   .ToArray();
 
-            AppDomain.CurrentDomain.AssemblyLoad += CurrentDomain_AssemblyLoad;
+            s_locker.EnterWriteLock();
+            try
+            {
+                s_assemblies = s_assemblies.Union(snapshot);
+            }
+            finally
+            {
+                s_locker.ExitWriteLock();
+            }
         }
 
         /// <summary>
@@ -154,6 +168,21 @@ namespace Democrite.Framework.Core
             this._siloOptions = provider.GetRequiredService<IOptions<SiloOptions>>();
 
             return ValueTask.CompletedTask;
+        }
+
+        /// <summary>
+        /// Try to load a referenced assembly; return null if it could not be loaded (missing optional dependency, ...)
+        /// </summary>
+        private static Assembly? TryLoadAssembly(AssemblyName name)
+        {
+            try
+            {
+                return Assembly.Load(name);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

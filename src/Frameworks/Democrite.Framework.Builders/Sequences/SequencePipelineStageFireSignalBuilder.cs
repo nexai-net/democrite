@@ -55,8 +55,7 @@ namespace Democrite.Framework.Builders.Sequences
 
         ISequencePipelineBuilder<TPreviousMessage> ISequencePipelineStageFireSignalBuilder<ISequencePipelineBuilder<TPreviousMessage>>.Message<TMessage>(TMessage message)
         {
-            //TO-DO from Opus 5.5 Single message flagged as multi : Message<TMessage>(TMessage message) passes multi=true here and in the non-generic overload at line 70. The executor will then fan out any message struct that implements IEnumerable (for example ImmutableArray) into several signals. Pass false for the single-message overloads.
-            var stage = new SequencePipelineFireSignalStageBuilder<TPreviousMessage, TMessage>(this._signalInfo, message, null, true, this._metaDataBuilder, this._fixUid);
+            var stage = new SequencePipelineFireSignalStageBuilder<TPreviousMessage, TMessage>(this._signalInfo, message, null, false, this._metaDataBuilder, this._fixUid);
             return this._root.EnqueueStage<TPreviousMessage>(stage);
         }
 
@@ -68,7 +67,7 @@ namespace Democrite.Framework.Builders.Sequences
 
         ISequencePipelineBuilder ISequencePipelineStageFireSignalBuilder<ISequencePipelineBuilder>.Message<TMessage>(TMessage message)
         {
-            var stage = new SequencePipelineFireSignalStageBuilder<TPreviousMessage, TMessage>(this._signalInfo, message, null, true, this._metaDataBuilder, this._fixUid);
+            var stage = new SequencePipelineFireSignalStageBuilder<TPreviousMessage, TMessage>(this._signalInfo, message, null, false, this._metaDataBuilder, this._fixUid);
             return this._root.EnqueueStage(stage);
         }
 

@@ -10,6 +10,8 @@ namespace Democrite.Toolbox.Abstractions.Conditions
 
     using System;
     using System.Collections;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
     using System.ComponentModel;
     using System.Reflection;
     using System.Runtime.Serialization;
@@ -30,7 +32,10 @@ namespace Democrite.Toolbox.Abstractions.Conditions
 
         public const string TypeDiscriminator = "value";
 
-        private readonly IEqualityComparer _comparer;
+        private static readonly ConcurrentDictionary<Type, IEqualityComparer> s_comparerCache = new ConcurrentDictionary<Type, IEqualityComparer>();
+
+        [NonSerialized]
+        private IEqualityComparer? _comparer;
 
         #endregion
 
@@ -49,9 +54,6 @@ namespace Democrite.Toolbox.Abstractions.Conditions
                 var serialized = JsonConvert.SerializeObject(value);
                 this.Value = JsonConvert.DeserializeObject(serialized, type.ToType());
             }
-
-            //TO-DO from Opus 5.5 Comparer field lost on non-ctor deserialization : _comparer is only set in the constructor. DataContract or Orleans-style deserializers that skip constructors leave it null, so OnEquals throws NullReferenceException. ToType() also throws for Generic types. Build the comparer lazily, for example from a static per-Type cache.
-            this._comparer = BuildComparer(type.ToType());
         }
 
         #endregion
@@ -97,7 +99,25 @@ namespace Democrite.Toolbox.Abstractions.Conditions
         {
             return other is ConditionValueDefinition val &&
                    this.Type.Equals(val.Type) &&
-                   this._comparer.Equals(this.Value, val.Value);
+                   GetComparer().Equals(this.Value, val.Value);
+        }
+
+        /// <summary>
+        /// Gets the comparer lazily (field is not set when deserializers skip the constructor)
+        /// </summary>
+        private IEqualityComparer GetComparer()
+        {
+            var comparer = this._comparer;
+            if (comparer is null)
+            {
+                // Generic (non resolved) types cannot be converted to a runtime Type, fallback on the object comparer
+                comparer = this.Type is ConcretBaseType
+                                ? s_comparerCache.GetOrAdd(this.Type.ToType(), static t => BuildComparer(t))
+                                : EqualityComparer<object>.Default;
+                this._comparer = comparer;
+            }
+
+            return comparer;
         }
 
         /// <inheritdoc />
@@ -111,7 +131,6 @@ namespace Democrite.Toolbox.Abstractions.Conditions
         /// </summary>
         private static IEqualityComparer BuildComparer(Type type)
         {
-            // OPTIMIZE : cache comparer by type
             return (IEqualityComparer)(typeof(EqualityComparer<>).MakeGenericType(type)
                                                                  .GetProperty(nameof(EqualityComparer<int>.Default), BindingFlags.Public | BindingFlags.Static)!
                                                                  .GetValue(null))!;

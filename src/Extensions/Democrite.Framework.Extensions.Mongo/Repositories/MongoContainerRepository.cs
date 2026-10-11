@@ -88,9 +88,11 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         #region Methods
 
         /// <inheritdoc />
-        //TO-DO from Opus 5.5 Container repo skips init and read-only checks : None of the container repository's IRepository<TEntity> methods (delete, get, push) call EnsureInitialized, so MongoCollection is null (NullReferenceException) if one of them is the first call. The delete methods also never call CheckReadOnly, so MongoReadonlyContainerRepository can delete data. Call CheckReadOnly() and await EnsureInitialized(token) at the start of each method.
         public async Task<bool> DeleteRecordAsync(IReadOnlyCollection<TEntityId> entityIds, CancellationToken cancellationToken)
         {
+            CheckReadOnly();
+            await EnsureInitialized(cancellationToken);
+
             var deleteMany = await this.MongoCollection.DeleteManyAsync(Builders<TContainer>.Filter.In(this._containedIdAccess, entityIds), cancellationToken);
             return deleteMany.DeletedCount > 0;
         }
@@ -98,6 +100,9 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async Task<bool> DeleteRecordAsync(TEntityId uid, CancellationToken cancellationToken)
         {
+            CheckReadOnly();
+            await EnsureInitialized(cancellationToken);
+
             var deleteMany = await this.MongoCollection.DeleteOneAsync(Builders<TContainer>.Filter.Eq(this._containedIdAccess, uid), cancellationToken);
             return deleteMany.DeletedCount > 0;
         }
@@ -105,6 +110,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<TEntity?> GetFirstValueAsync([AllowNull] Expression<Func<TEntity, bool>> filterExpression, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var aggregatePipeline = PrepareAggregatePipeline();
 
             var entity = await aggregatePipeline.Match(filterExpression ?? s_allFilter)
@@ -117,6 +124,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<TProjection?> GetFirstValueAsync<TProjection>([AllowNull] Expression<Func<TEntity, bool>> filterExpression, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var aggregatePipeline = PrepareAggregatePipeline();
 
             var entity = await aggregatePipeline.Match(filterExpression ?? s_allFilter)
@@ -130,6 +139,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<TEntity?> GetValueByIdAsync([NotNull] TEntityId entityId, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var entity = await this.MongoCollection.Aggregate(s_defaultAggregateOptions)
                                                    .Match(Builders<TContainer>.Filter.Eq(this._containedIdAccess, entityId))
                                                    .Limit(1)
@@ -142,6 +153,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<TProjection?> GetValueByIdAsync<TProjection>([NotNull] TEntityId entityId, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var entity = await this.MongoCollection.Aggregate(s_defaultAggregateOptions)
                                                    .Match(Builders<TContainer>.Filter.Eq(this._containedIdAccess, entityId))
                                                    .Limit(1)
@@ -155,6 +168,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<IReadOnlyCollection<TProjection>> GetValueByIdAsync<TProjection>([NotNull] IReadOnlyCollection<TEntityId> entityIds, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var entities = await this.MongoCollection.Aggregate(s_defaultAggregateOptions)
                                                      .Match(Builders<TContainer>.Filter.In(this._containedIdAccess, entityIds))
                                                      .ReplaceRoot(this._containedAccess)
@@ -167,6 +182,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<IReadOnlyCollection<TEntity>> GetValueByIdAsync([NotNull] IReadOnlyCollection<TEntityId> entityIds, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var entities = await this.MongoCollection.Aggregate(s_defaultAggregateOptions)
                                                      .Match(Builders<TContainer>.Filter.In(this._containedIdAccess, entityIds))
                                                      .ReplaceRoot(this._containedAccess)
@@ -178,6 +195,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<IReadOnlyCollection<TProjection>> GetValuesAsync<TProjection>([AllowNull] Expression<Func<TEntity, bool>> filterExpression, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var pipeline = PrepareAggregatePipeline();
 
             var results = await pipeline.Match(filterExpression ?? s_allFilter)
@@ -190,6 +209,8 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async ValueTask<IReadOnlyCollection<TEntity>> GetValuesAsync([AllowNull] Expression<Func<TEntity, bool>> filterExpression, CancellationToken token)
         {
+            await EnsureInitialized(token);
+
             var pipeline = PrepareAggregatePipeline();
 
             if (filterExpression is not null)
@@ -218,6 +239,9 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async Task<bool> PushDataRecordAsync(TEntity entity, bool insertIfNew, CancellationToken token)
         {
+            CheckReadOnly();
+            await EnsureInitialized(token);
+
             var container = this._containerFactory(entity);
             return await base.PushDataRecordAsync(container, insertIfNew, token);
         }
@@ -225,6 +249,9 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
         /// <inheritdoc />
         public async Task<int> PushDataRecordAsync(IReadOnlyCollection<TEntity> entities, bool insertIfNew, CancellationToken token)
         {
+            CheckReadOnly();
+            await EnsureInitialized(token);
+
             var containers = entities.Select(e => this._containerFactory(e))
                                      .ToArray();
 

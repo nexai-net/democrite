@@ -26,17 +26,18 @@ namespace Democrite.Framework.Core.Abstractions.Extensions
                                                                  .ThenBy(o => o.CreateOn)
                                                                  .ToReadOnly());
 
-            return ToDebugDisplayName(parentIndx, Guid.Empty);
+            return ToDebugDisplayName(parentIndx, Guid.Empty, new HashSet<Guid>());
         }
 
         /// <summary>
         /// Converts to debug string display
         /// </summary>
-        private static string ToDebugDisplayName(IReadOnlyDictionary<Guid, IReadOnlyCollection<IDiagnosticLog>> parentIndx, Guid parentId)
+        /// <param name="visited">Parent ids already displayed, used to prevent infinite recursion on cyclic ids</param>
+        private static string ToDebugDisplayName(IReadOnlyDictionary<Guid, IReadOnlyCollection<IDiagnosticLog>> parentIndx, Guid parentId, HashSet<Guid> visited)
         {
             var builder = new StringBuilder();
 
-            if (parentIndx.TryGetValue(parentId, out var logs))
+            if (visited.Add(parentId) && parentIndx.TryGetValue(parentId, out var logs))
             {
                 foreach (var grp in logs.GroupBy(l => l.CurrentExecutionId))
                 {
@@ -46,8 +47,10 @@ namespace Democrite.Framework.Core.Abstractions.Extensions
                         builder.AppendLine(log.ToDebugDisplayName());
                     }
 
-                    //TO-DO from Opus 5.5 Unbounded recursion on cyclic log ids : If a log's CurrentExecutionId equals its CallerId (e.g. Guid.Empty at root) or forms a cycle, recursion never ends and causes a StackOverflowException. Track visited ids and skip grp.Key == parentId.
-                    var childStr = ToDebugDisplayName(parentIndx, grp.Key).Replace("\n", "\n    ");
+                    if (grp.Key == parentId || visited.Contains(grp.Key))
+                        continue;
+
+                    var childStr = ToDebugDisplayName(parentIndx, grp.Key, visited).Replace("\n", "\n    ");
                     if (!string.IsNullOrEmpty(childStr))
                     {
                         builder.Append(' ', 4);

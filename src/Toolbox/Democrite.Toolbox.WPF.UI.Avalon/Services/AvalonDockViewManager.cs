@@ -195,8 +195,7 @@
             if (sender is LayoutContent content)
                 content.Closed -= View_Closed;
 
-            //TO-DO from Opus 5.5 Closed documents never dispose their view model : The sender is a LayoutContent, not a FrameworkElement, so this always passes null and the view model of a closed document is never disposed (a leak). Use `((sender as LayoutContent)?.Content as FrameworkElement)?.DataContext`.
-            base.ViewClosed((sender as FrameworkElement)?.DataContext);
+            base.ViewClosed(((sender as LayoutContent)?.Content as FrameworkElement)?.DataContext);
         }
 
         /// <summary>

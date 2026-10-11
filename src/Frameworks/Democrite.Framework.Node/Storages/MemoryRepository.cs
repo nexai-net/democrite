@@ -178,13 +178,13 @@ namespace Democrite.Framework.Node.Storages
 
             var bytes = this._democriteSerializer.SerializeToBinary(entity);
 
-            return await storageShelveGrain.WriteDatAsync(entity.Uid,
-                                                          entity.Uid,
-                                                          insertIfNew,
-                                                          this._storageName,
-                                                          bytes,
-                                                          entity.GetType().GetAbstractType(),
-                                                          entity.GetType().GetAllCompatibleAbstractTypes());
+            return await storageShelveGrain.WriteDataAsync(entity.Uid,
+                                                           entity.Uid,
+                                                           insertIfNew,
+                                                           this._storageName,
+                                                           bytes,
+                                                           entity.GetType().GetAbstractType(),
+                                                           entity.GetType().GetAllCompatibleAbstractTypes());
         }
 
         /// <inheritdoc />
@@ -264,8 +264,8 @@ namespace Democrite.Framework.Node.Storages
             {
                 limit ??= int.MaxValue;
 
-                //TO-DO from Opus 5.5 Cancellation registration never disposed : The CancellationTokenRegistration is not disposed, so long-lived tokens accumulate callbacks. A later cancel calls Cancel() on an already-disposed GrainCancellationTokenSource, and the returned Task is ignored. The same pattern appears on line 296. Wrap the registration in `using`.
-                token.Register(() => cancelSource.Cancel().ConfigureAwait(false));
+                // Registration disposed before the GrainCancellationTokenSource (reverse declaration order)
+                using var cancelRegistration = token.Register(() => _ = cancelSource.Cancel());
 
                 var filter = filterExpression?.Compile() ?? s_allTrue;
 
@@ -294,7 +294,8 @@ namespace Democrite.Framework.Node.Storages
         {
             using (var cancelSource = new GrainCancellationTokenSource())
             {
-                token.Register(() => cancelSource.Cancel().ConfigureAwait(false));
+                // Registration disposed before the GrainCancellationTokenSource (reverse declaration order)
+                using var cancelRegistration = token.Register(() => _ = cancelSource.Cancel());
 
                 // TODO : Add state filter
                 var entitiesByBytes = await this._registry.GetAllStoreByKeysDataAsync<TKey>(this._storageName, keys, cancelSource.Token);
@@ -356,8 +357,7 @@ namespace Democrite.Framework.Node.Storages
         /// </summary>
         private IMemoryStorageRepositoryGrain<TEntityId> GetTargetStorage(TEntityId entityUid)
         {
-            //TO-DO from Opus 5.5 Non-deterministic hash used for shard routing : string.GetHashCode is randomized per process in .NET Core, so different silos, clients or restarts route the same string id to different storage grains, which causes duplicate records and failed deletes. Use a stable hash such as XxHash32 or a deterministic FNV over the key bytes.
-            var containerIndex = Math.Abs(entityUid.GetHashCode() % this._dataBalancer.Length);
+            var containerIndex = (int)(GetStableHash(entityUid) % (uint)this._dataBalancer.Length);
             var storageShelveGrain = this._dataBalancer[containerIndex];
 
             if (storageShelveGrain is null)
@@ -367,6 +367,31 @@ namespace Democrite.Framework.Node.Storages
             }
 
             return storageShelveGrain;
+        }
+
+        /// <summary>
+        /// Gets a hash stable across processes, silos and restarts (string.GetHashCode is randomized per process)
+        /// </summary>
+        private static uint GetStableHash(TEntityId entityUid)
+        {
+            if (entityUid is string str)
+            {
+                // FNV-1a 32 bits over UTF-8 bytes
+                const uint fnvOffsetBasis = 2166136261;
+                const uint fnvPrime = 16777619;
+
+                uint hash = fnvOffsetBasis;
+                foreach (var b in System.Text.Encoding.UTF8.GetBytes(str))
+                {
+                    hash ^= b;
+                    hash *= fnvPrime;
+                }
+
+                return hash;
+            }
+
+            // Value types ids (Guid, int, long, ...) have a deterministic hash code
+            return unchecked((uint)entityUid.GetHashCode());
         }
 
         #endregion

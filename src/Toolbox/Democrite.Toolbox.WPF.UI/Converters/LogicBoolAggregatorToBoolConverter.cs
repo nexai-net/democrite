@@ -81,7 +81,10 @@ namespace Democrite.Toolbox.WPF.UI.Converters
             if (values is null)
                 return Binding.DoNothing;
 
-            //TO-DO from Opus 5.5 MultiBinding Cast<bool> throws on UnsetValue : During initialization or with failed bindings, MultiBinding passes DependencyProperty.UnsetValue or null, so Cast<bool>() throws InvalidCastException. Use OfType<bool>() or return Binding.DoNothing when any value is not a bool.
+            // During initialization or on failed bindings MultiBinding could provide DependencyProperty.UnsetValue or null
+            if (values.Any(v => v is not bool))
+                return Binding.DoNothing;
+
             return ConvertImpl(values.Cast<bool>().ToArray(), targetType, parameter, culture);
         }
 

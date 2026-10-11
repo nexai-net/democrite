@@ -74,8 +74,11 @@ namespace Democrite.Toolbox.Serializations.Converters
                 if (success)
                     return existingValue;
 
+                // Type not solved, deserializing again with the same type will route back into this converter (infinite recursion)
+                if (initialObjectType == objectType)
+                    throw new InvalidOperationException("Could not solve concrete type to deserialize item type " + objectType + " Path " + reader.Path);
+
                 var objReader = obj.CreateReader();
-                //TO-DO from Opus 5.5 Infinite recursion when no type condition matches : When no condition matches, objectType stays TType, so serializer.Deserialize routes back into this same converter and recurses until a StackOverflowException. Detect that objectType did not change and either throw a clear exception or deserialize through a serializer that does not include this converter.
                 return serializer.Deserialize(objReader, objectType);
             }
 
@@ -86,7 +89,12 @@ namespace Democrite.Toolbox.Serializations.Converters
         }
 
         /// <inheritdoc />
-        //TO-DO from Opus 5.5 CanWrite not overridden, serialization always throws : JsonConverter.CanWrite defaults to true, so serializing any type the converter matches calls WriteJson, which throws NotSupportedException. Add 'public override bool CanWrite => false;'.
+        public override bool CanWrite
+        {
+            get { return false; }
+        }
+
+        /// <inheritdoc />
         public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
         {
             throw new NotSupportedException("NewtownJsonMetaConverter should only be used while deserializing.");

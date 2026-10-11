@@ -17,6 +17,12 @@ namespace Democrite.Toolbox.UnitTests.Supports
     /// </summary>
     public sealed class SupportBaseInitializationUTest
     {
+        #region Fields
+
+        private static readonly TimeSpan s_enteredTimeout = TimeSpan.FromSeconds(30);
+
+        #endregion
+
         #region Nested
 
         private sealed class TestSupportInitialization : SupportBaseInitialization<int>
@@ -24,6 +30,7 @@ namespace Democrite.Toolbox.UnitTests.Supports
             #region Fields
 
             private readonly TaskCompletionSource _completionSource;
+            private readonly TaskCompletionSource? _enteredSource;
             private long _initializationCounter;
 
             #endregion
@@ -33,9 +40,10 @@ namespace Democrite.Toolbox.UnitTests.Supports
             /// <summary>
             /// Initializes a new instance of the <see cref="TestSupportInitialization"/> class.
             /// </summary>
-            public TestSupportInitialization(TaskCompletionSource completionSource)
+            public TestSupportInitialization(TaskCompletionSource completionSource, TaskCompletionSource? enteredSource = null)
             {
                 this._completionSource = completionSource;
+                this._enteredSource = enteredSource;
             }
 
             #endregion
@@ -54,6 +62,9 @@ namespace Democrite.Toolbox.UnitTests.Supports
             /// <inheritdoc />
             protected override async ValueTask OnInitializingAsync(int initializationState, CancellationToken token)
             {
+                // Signal the test the initialization is in progress
+                this._enteredSource?.TrySetResult();
+
                 await this._completionSource.Task;
 
                 Interlocked.Increment(ref this._initializationCounter);
@@ -74,10 +85,12 @@ namespace Democrite.Toolbox.UnitTests.Supports
         {
             var initCounter = 0;
             var completionSource = new TaskCompletionSource();
+            var enteredSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             var inst = new SupportInitializationImplementation<int>((_, token) =>
             {
                 Interlocked.Increment(ref initCounter);
+                enteredSource.TrySetResult();
                 return new ValueTask(completionSource.Task);
             });
 
@@ -88,9 +101,8 @@ namespace Democrite.Toolbox.UnitTests.Supports
 
             var task = inst.InitializationAsync(42);
 
-            // Wait to be sure the completion task is waiting
-            //TO-DO from Opus 5.5 Fixed sleep to reach initializing state : Both EnsureOnlyOneCall tests wait 1 s and assume initialization has started. This is slow and can still fail on a loaded CI agent. Have the init delegate signal a TaskCompletionSource when it is entered and await that before asserting IsInitializing (the same applies at line 134).
-            await Task.Delay(1000);
+            // Wait (bounded) until the init delegate is entered
+            await enteredSource.Task.WaitAsync(s_enteredTimeout);
 
             Check.That(inst.IsInitializing).IsTrue();
             Check.That(inst.IsInitialized).IsFalse();
@@ -121,8 +133,9 @@ namespace Democrite.Toolbox.UnitTests.Supports
         public async Task SupportBaseInitialization_EnsureOnlyOneCall()
         {
             var completionSource = new TaskCompletionSource();
+            var enteredSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var inst = new TestSupportInitialization(completionSource);
+            var inst = new TestSupportInitialization(completionSource, enteredSource);
 
             Check.That(inst.InitializationCounter).IsEqualTo(0);
 
@@ -131,8 +144,8 @@ namespace Democrite.Toolbox.UnitTests.Supports
 
             var task = inst.InitializationAsync(42);
 
-            // Wait to be sure the completion task is waiting
-            await Task.Delay(1000);
+            // Wait (bounded) until the init method is entered
+            await enteredSource.Task.WaitAsync(s_enteredTimeout);
 
             Check.That(inst.IsInitializing).IsTrue();
             Check.That(inst.IsInitialized).IsFalse();

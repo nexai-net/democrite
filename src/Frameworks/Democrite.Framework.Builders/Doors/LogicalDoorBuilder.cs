@@ -29,6 +29,7 @@ namespace Democrite.Framework.Builders.Doors
 
         private static readonly Regex s_formulaCharAllowed = new Regex(@"^[a-zA-Z!&|^\(\)\s]+$");
         private static readonly Regex s_variableCharAllowed = new Regex(@"^[a-zA-Z]+$");
+        private static readonly Regex s_formulaVariableToken = new Regex(@"[a-zA-Z]+");
 
         private readonly IDoorWithListenerBuilder _rootDoorBuilder;
         private readonly Dictionary<Guid, string> _variableNames;
@@ -70,6 +71,7 @@ namespace Democrite.Framework.Builders.Doors
                                                     BuildErrorSR.VariableOnlyCharAllowed);
             }
 
+            CheckVariableNameNotAlreadyUsed(variableName);
             this._variableNames.Add(signalId.Uid, variableName);
             return this;
         }
@@ -85,6 +87,7 @@ namespace Democrite.Framework.Builders.Doors
                                                     BuildErrorSR.VariableOnlyCharAllowed);
             }
 
+            CheckVariableNameNotAlreadyUsed(variableName);
             this._variableNames.Add(doorId.Uid, variableName);
             return this;
         }
@@ -104,6 +107,7 @@ namespace Democrite.Framework.Builders.Doors
         /// <inheritdoc />
         public ILogicalDoorBuilder UseVariableThis()
         {
+            CheckVariableNameNotAlreadyUsed("this");
             this._variableNames.Add(this._rootDoorBuilder.Uid, "this");
             return this;
         }
@@ -144,8 +148,11 @@ namespace Democrite.Framework.Builders.Doors
                                                     BuildErrorSR.MandatoryValueMissing);
             }
 
-            //TO-DO from Opus 5.5 Variable validation checks counts only : Only the counts are compared, so variables assigned to ids that are not listened sources pass. The missing-variable check (Contains, case-insensitive) treats 'a' as present in 'ab'. A variable name reused for two ids crashes later in ToDictionary. Check that the id sets are equal, match whole-word tokens, and reject duplicate names in AssignVariableName.
-            if (allVariablesIds.Length != this._variableNames.Count(g => g.Key != this._rootDoorBuilder.Uid))
+            // All listened sources (and only them) must have a variable name
+            var sourceIds = allVariablesIds.Select(v => v.Uid).ToHashSet();
+            var assignedIds = this._variableNames.Keys.Where(k => k != this._rootDoorBuilder.Uid).ToHashSet();
+
+            if (!sourceIds.SetEquals(assignedIds))
             {
                 throw new InvalidParameterException(nameof(BooleanLogicalDoorDefinition.VariableNames),
                                                     BuildErrorSR.VariableNamesIsNotAlignWIthSources);
@@ -157,8 +164,13 @@ namespace Democrite.Framework.Builders.Doors
                                                     BuildErrorSR.MandatoryValueMissing);
             }
 
+            // Match whole variable tokens ('a' must not be considered present in 'ab')
+            var formulaTokens = s_formulaVariableToken.Matches(this._logicalFormula!)
+                                                      .Select(m => m.Value)
+                                                      .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var missingVariable = this._variableNames.Values
-                                                     .Where(vr => this._logicalFormula!.Contains(vr, StringComparison.OrdinalIgnoreCase) == false)
+                                                     .Where(vr => formulaTokens.Contains(vr) == false)
                                                      .ToArray();
 
             if (missingVariable.Length > 0)
@@ -183,7 +195,19 @@ namespace Democrite.Framework.Builders.Doors
                                                     this._activeWindowInterval,
                                                     this._rootDoorBuilder.RetentionMaxPeriod,
                                                     this._rootDoorBuilder.HistoryMaxRetention,
-                                                    this._rootDoorBuilder.NotConsumedMaxRetiention);
+                                                    this._rootDoorBuilder.NotConsumedMaxRetention);
+        }
+
+        /// <summary>
+        /// Ensure a variable name is not assigned twice (formula variables are case insensitive)
+        /// </summary>
+        private void CheckVariableNameNotAlreadyUsed(string variableName)
+        {
+            if (this._variableNames.Values.Contains(variableName, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidParameterException(nameof(BooleanLogicalDoorDefinition.VariableNames),
+                                                    "Variable name '" + variableName + "' is already assigned");
+            }
         }
 
         #endregion

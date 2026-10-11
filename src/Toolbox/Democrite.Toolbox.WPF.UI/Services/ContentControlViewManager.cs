@@ -8,6 +8,7 @@ namespace Democrite.Toolbox.WPF.UI.Services
     using Democrite.Toolbox.WPF.Abstractions.Navigations;
     using Democrite.Toolbox.WPF.Abstractions.Views;
     using Democrite.Toolbox.WPF.Services;
+    using Democrite.Toolbox.WPF.UI.Controls;
 
     using Microsoft.Extensions.DependencyInjection;
 
@@ -84,6 +85,10 @@ namespace Democrite.Toolbox.WPF.UI.Services
             {
                 this._windows.Add(newId, windowView);
 
+                // View model lifetime is managed by the view manager (persistence rules)
+                if (windowView is WindowExt windowExt)
+                    windowExt.DisposeDataContextOnClosed = false;
+
                 windowView.Closed -= WindowView_Closed;
                 windowView.Closed += WindowView_Closed;
 
@@ -99,7 +104,9 @@ namespace Democrite.Toolbox.WPF.UI.Services
                 var previousContent = this._contentControl.Content;
                 this._contentControl.Content = null;
 
-                //TO-DO from Opus 5.5 Replaced view's view model is never disposed : previousContent is the view (a FrameworkElement), not the view model, so the previous DataContext is never disposed. Closed windows likewise never go through ViewClosed. Call base.ViewClosed((previousContent as FrameworkElement)?.DataContext) here and in WindowView_Closed so persistence rules are respected.
+                if (previousContent is FrameworkElement previousView)
+                    base.ViewClosed(previousView.DataContext);
+
                 if (previousContent is IDisposable dispo)
                     dispo.Dispose();
 
@@ -119,6 +126,12 @@ namespace Democrite.Toolbox.WPF.UI.Services
             var kvWindow = this._windows.FirstOrDefault(w => w.Value == sender);
             if (kvWindow.Value is not null)
                 this._windows.Remove(kvWindow.Key);
+
+            if (sender is Window window)
+            {
+                window.Closed -= WindowView_Closed;
+                base.ViewClosed(window.DataContext);
+            }
         }
 
         #endregion

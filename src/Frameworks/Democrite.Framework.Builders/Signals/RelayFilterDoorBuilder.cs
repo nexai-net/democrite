@@ -83,7 +83,7 @@ namespace Democrite.Framework.Builders.Signals
                                                  null,
                                                  this._rootDoorBuilder.RetentionMaxPeriod,
                                                  this._rootDoorBuilder.HistoryMaxRetention,
-                                                 this._rootDoorBuilder.NotConsumedMaxRetiention);
+                                                 this._rootDoorBuilder.NotConsumedMaxRetention);
         }
 
         #endregion

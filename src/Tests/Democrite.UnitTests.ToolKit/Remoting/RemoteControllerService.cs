@@ -108,63 +108,74 @@ namespace Democrite.UnitTests.ToolKit.Remoting
         /// </summary>
         /// <param name="sender">The sender.</param>
         /// <param name="e">The <see cref="ConnectionMessageEventArgs{System.Nullable{RemoteCallMessage}}"/> instance containing the event data.</param>
-        //TO-DO from Opus 5.5 async void handler can crash test host : This async void event handler throws NotImplementedException at its end, and its awaited WriteAsync sits outside the try/catch. Any exception it throws goes to the thread pool and kills the test process. Wrap the whole body in try/catch and send an error RemoteCallMessage back instead of throwing.
+        /// <remarks>
+        ///     async void event handler : no exception must escape, otherwise it is raised on the thread pool and kills the test host.
+        ///     Any failure is sent back to the caller as an error <see cref="RemoteCallMessage"/>.
+        /// </remarks>
         private async void ServerMessageReceived(object? sender, ConnectionMessageEventArgs<RemoteCallMessage?> e)
         {
             if (e == null || e.Message == null || string.IsNullOrEmpty(e.Message.JsonContent))
                 return;
 
-            var msg = JsonConvert.DeserializeObject<MethodCallMessage>(e.Message.JsonContent, TestRemotingService.SerializationSettings);
-            if (s_resolutionCall.TryGetValue(msg!.MethodUniqueId, out var resolution))
+            var returnObjJsonStr = string.Empty;
+            string? exception = null;
+            bool isCancelled = false;
+
+            try
             {
-                if (this._serviceInstance.TryGetTarget(out var inst))
+                var msg = JsonConvert.DeserializeObject<MethodCallMessage>(e.Message.JsonContent, TestRemotingService.SerializationSettings);
+                if (msg != null &&
+                    s_resolutionCall.TryGetValue(msg.MethodUniqueId, out var resolution) &&
+                    this._serviceInstance.TryGetTarget(out var inst))
                 {
-                    var returnObjJsonStr = string.Empty;
-                    string? exception = null;
-                    bool isCancelled = false;
+                    var result = resolution.Invoke(inst, msg.ArgumentRoot?.Flattern().ToArray() ?? EnumerableHelper<object>.ReadOnlyArray);
 
-                    try
+                    var resultInfo = result?.GetType().GetTypeInfoExtension();
+                    object? returnObj = null;
+
+                    if (resultInfo?.IsValueTask ?? false)
                     {
-                        var result = resolution.Invoke(inst, msg.ArgumentRoot?.Flattern().ToArray() ?? EnumerableHelper<object>.ReadOnlyArray);
-
-                        var resultInfo = result?.GetType().GetTypeInfoExtension();
-                        object? returnObj = null;
-
-                        if (resultInfo?.IsValueTask ?? false)
-                        {
-                            result = resultInfo.GetTaskFromAnyValueTask(result);
-                        }
-
-                        if (result is Task tsk)
-                        {
-                            await tsk;
-
-                            if (resolution.ReturnType.GetGenericArguments().Length == 1)
-                                returnObj = tsk.GetResult();
-                        }
-
-                        if (returnObj != null)
-                            returnObjJsonStr = JsonConvert.SerializeObject(returnObj, TestRemotingService.SerializationSettings);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        isCancelled = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        exception = ex.GetFullString();
+                        result = resultInfo.GetTaskFromAnyValueTask(result);
                     }
 
-                    await e.Connection.WriteAsync(new RemoteCallMessage(e.Message.InstanceId,
-                                                                        e.Message.ExecutionId,
-                                                                        returnObjJsonStr,
-                                                                        exception,
-                                                                        isCancelled));
-                    return;
+                    if (result is Task tsk)
+                    {
+                        await tsk;
+
+                        if (resolution.ReturnType.GetGenericArguments().Length == 1)
+                            returnObj = tsk.GetResult();
+                    }
+
+                    if (returnObj != null)
+                        returnObjJsonStr = JsonConvert.SerializeObject(returnObj, TestRemotingService.SerializationSettings);
+                }
+                else
+                {
+                    exception = GetType().Name + " - ServerMessageReceived - could not resolve - " + e.Message.JsonContent;
                 }
             }
+            catch (OperationCanceledException)
+            {
+                isCancelled = true;
+            }
+            catch (Exception ex)
+            {
+                exception = ex.GetFullString();
+            }
 
-            throw new NotImplementedException(GetType().Name + " - ServerMessageReceived - could not resolve - " + e.Message.JsonContent);
+            try
+            {
+                await e.Connection.WriteAsync(new RemoteCallMessage(e.Message.InstanceId,
+                                                                    e.Message.ExecutionId,
+                                                                    returnObjJsonStr,
+                                                                    exception,
+                                                                    isCancelled));
+            }
+            catch (Exception ex)
+            {
+                // Connection lost : the caller will hit its own call timeout
+                Debug.WriteLine("[" + this.Uid + "] Could not send remote call response : " + ex.Message);
+            }
         }
 
         #endregion

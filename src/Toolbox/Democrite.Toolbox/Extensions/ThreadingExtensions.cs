@@ -37,7 +37,10 @@ namespace Democrite.Toolbox.Extensions
         /// </summary>
         public static IDisposable Lock(this Mutex locker, TimeSpan timeout)
         {
-            return Lock(locker, CancellationHelper.Timeout(timeout));
+            using (var timeoutSource = new CancellationTokenSource(timeout))
+            {
+                return Lock(locker, timeoutSource.Token);
+            }
         }
 
         /// <summary>
@@ -62,7 +65,11 @@ namespace Democrite.Toolbox.Extensions
         /// </summary>
         public static IDisposable Lock(this SemaphoreSlim locker, TimeSpan timeout)
         {
-            return Lock(locker, CancellationHelper.Timeout(timeout));
+            // Direct timeout wait : no timer-backed CancellationTokenSource allocated on each lock
+            if (!locker.Wait(timeout))
+                throw new OperationCanceledException("SemaphoreSlim - Lock timeout after " + timeout);
+
+            return new DisposableAction<SemaphoreSlim>(static s => s.Release(), locker);
         }
 
         /// <summary>
@@ -87,7 +94,10 @@ namespace Democrite.Toolbox.Extensions
         /// </summary>
         public static IDisposable Lock(this Semaphore locker, TimeSpan timeout)
         {
-            return Lock(locker, CancellationHelper.Timeout(timeout));
+            using (var timeoutSource = new CancellationTokenSource(timeout))
+            {
+                return Lock(locker, timeoutSource.Token);
+            }
         }
 
         /// <summary>
@@ -119,9 +129,13 @@ namespace Democrite.Toolbox.Extensions
         /// <summary>
         /// lock using ScopeLock pattern's implementation 
         /// </summary>
-        public static Task<IDisposable> LockAsync(this SemaphoreSlim locker, TimeSpan timeout)
+        public static async Task<IDisposable> LockAsync(this SemaphoreSlim locker, TimeSpan timeout)
         {
-            return LockAsync(locker, CancellationHelper.Timeout(timeout));
+            // Direct timeout wait : no timer-backed CancellationTokenSource allocated on each lock
+            if (!await locker.WaitAsync(timeout))
+                throw new OperationCanceledException("SemaphoreSlim - LockAsync timeout after " + timeout);
+
+            return new DisposableAction<SemaphoreSlim>(static s => s.Release(), locker);
         }
 
         /// <summary>

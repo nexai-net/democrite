@@ -10,7 +10,7 @@ namespace Democrite.Framework.Builders.UnitTests
     using Democrite.Framework.Core.Abstractions.Sequence.Stages;
     using Democrite.UnitTests.ToolKit.Tests;
 
-    using Moq;
+    using NSubstitute;
 
     using NFluent;
 
@@ -186,7 +186,7 @@ namespace Democrite.Framework.Builders.UnitTests
         [Fact]
         public void InvalidCallRecord_FromAnother_VGrain()
         {
-            var mockOtherVGrain = new Mock<IBasicTestOtherVGrain>().Object;
+            var mockOtherVGrain = Substitute.For<IBasicTestOtherVGrain>();
 
             var sequenceBuild = Sequence.Build("unit-test-invalid-call-control")
                                         .NoInput()
@@ -204,7 +204,7 @@ namespace Democrite.Framework.Builders.UnitTests
         [Fact]
         public void External_Arguments()
         {
-            var mockOtherVGrain = new Mock<IBasicTestOtherVGrain>().Object;
+            var mockOtherVGrain = Substitute.For<IBasicTestOtherVGrain>();
 
             var sequenceBuild = Sequence.Build("unit-test-not-allow-arg")
                                         .NoInput()
@@ -222,7 +222,7 @@ namespace Democrite.Framework.Builders.UnitTests
         [Fact]
         public void External_Arguments_DifferentFromInput()
         {
-            var mockOtherVGrain = new Mock<IBasicTestOtherVGrain>().Object;
+            var mockOtherVGrain = Substitute.For<IBasicTestOtherVGrain>();
 
             var sequenceBuild = Sequence.Build("unit-test-invalid-call-record-not-allow-arguments-different-from-input")
                                         .NoInput()

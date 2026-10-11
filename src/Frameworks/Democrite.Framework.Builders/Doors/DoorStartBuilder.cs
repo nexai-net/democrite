@@ -39,7 +39,7 @@ namespace Democrite.Framework.Builders.Doors
 
             this.RetentionMaxPeriod = DoorDefinition.DEFAULT_RETENTION_MAX_DELAY;
             this.HistoryMaxRetention = DoorDefinition.DEFAULT_HISTORY_RETENTION;
-            this.NotConsumedMaxRetiention = DoorDefinition.DEFAULT_NOT_CONSUMED_RETENTION;
+            this.NotConsumedMaxRetention = DoorDefinition.DEFAULT_NOT_CONSUMED_RETENTION;
         }
 
         #endregion
@@ -53,8 +53,7 @@ namespace Democrite.Framework.Builders.Doors
         public uint? HistoryMaxRetention { get; private set; }
 
         /// <inheritdoc />
-        //TO-DO from Opus 5.5 Typo in public API property name : 'NotConsumedMaxRetiention' is misspelled in this public builder property and in DoorDefinition. Other public API typos exist too, such as IMemoryStorageRepositoryGrain.WriteDatAsync and ClusterNodeDiagnosticOptions.ConfiguratioName. Add correctly spelled members and mark the old ones [Obsolete] before removing them.
-        public uint? NotConsumedMaxRetiention { get; private set; }
+        public uint? NotConsumedMaxRetention { get; private set; }
 
         /// <inheritdoc />
         public IReadOnlyCollection<SignalId> SignalIds
@@ -87,13 +86,12 @@ namespace Democrite.Framework.Builders.Doors
             if (notConsumed != null && notConsumed < 1)
             {
                 throw new InvalidDefinitionPropertyValueException(typeof(DoorDefinition),
-                                                                  nameof(DoorDefinition.NotConsumedMaxRetiention),
+                                                                  nameof(DoorDefinition.NotConsumedMaxRetention),
                                                                   notConsumed?.ToString() ?? string.Empty,
                                                                   "Couldn't be less than 1");
             }
 
-            //TO-DO from Opus 5.5 notConsumed retention value silently discarded : SetSignalRetention(history, notConsumed) checks notConsumed but never stores it. HistoryMaxRetention is assigned twice and NotConsumedMaxRetiention keeps its default. Replace this second assignment with `this.NotConsumedMaxRetiention = notConsumed;`.
-            this.HistoryMaxRetention = history;
+            this.NotConsumedMaxRetention = notConsumed;
             return this;
         }
 

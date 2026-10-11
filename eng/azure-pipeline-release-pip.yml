@@ -15,9 +15,9 @@ parameters:
     - false
   
   - name: FinalPkgVersionNumber
-    displayName: Pkg Version Number
+    displayName: Pkg Version Number (empty = Version from SharedFrameworkAssemblyInfo.props)
     type: string
-    default: 1.0.0
+    default: ' '
 
 variables:
   #- template: Templates/azure-pipeline-pkg-version.yml
@@ -53,9 +53,22 @@ steps:
   - script: python -m pip install --upgrade build
     displayName: 'Python package builder'
 
-  - script: sed -i 's/^version = ".*"/version = "${{ parameters.FinalPkgVersionNumber }}"/' pyproject.toml
+  - bash: |
+      version="$(echo '${{ parameters.FinalPkgVersionNumber }}' | xargs)"
+      if [ -z "$version" ]; then
+        version="$(grep -oP '(?<=<Version>)[^<]+(?=</Version>)' '$(Build.SourcesDirectory)/SharedFrameworkAssemblyInfo.props' | head -n 1 | xargs)"
+      fi
+      if [ -z "$version" ]; then
+        echo "##vso[task.logissue type=error]Unable to resolve the package version"
+        exit 1
+      fi
+      echo "Python package version : $version"
+      echo "##vso[task.setvariable variable=ResolvedPkgVersion]$version"
+    displayName: 'Resolve pkg version'
+
+  - script: sed -i 's/^version = ".*"/version = "$(ResolvedPkgVersion)"/' pyproject.toml
     workingDirectory: ${{ variables.PythonPkgFolder }}
-    displayName: 'Setup pkg version : ${{ parameters.FinalPkgVersionNumber }}'
+    displayName: 'Setup pkg version'
   
   - script: python -m build
     workingDirectory: ${{ variables.PythonPkgFolder }}
@@ -66,7 +79,9 @@ steps:
     displayName: 'Python package twine'
 
   # https://twine.readthedocs.io/en/stable/#twine-upload
-  #TO-DO from Opus 5.5 Registry credentials passed on command line : The PyPI username and password are passed as process arguments, which exposes them in process listings and debug logs. Map the secrets into TWINE_USERNAME and TWINE_PASSWORD through the step's env, or use the TwineAuthenticate task with an API token.
-  - script: python3 -m twine upload -r ${{ variables.repoAlias }} -u '$(pythonRepoUsername)' -p '$(pythonRepoPassword)' dist/* 
+  - script: python3 -m twine upload --non-interactive -r ${{ variables.repoAlias }} dist/* 
     workingDirectory: ${{ variables.PythonPkgFolder }}
+    env:
+      TWINE_USERNAME: $(pythonRepoUsername)
+      TWINE_PASSWORD: $(pythonRepoPassword)
     displayName: 'Upload package to repository ${{ variables.repoAlias }}'

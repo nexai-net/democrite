@@ -241,13 +241,12 @@ namespace Democrite.Framework.Core.Abstractions.Signals
             if (object.ReferenceEquals(other, this))
                 return true;
 
-            //TO-DO from Opus 5.5 NRE on null VGrainMetaData : VGrainMetaData is nullable but Equals calls this.VGrainMetaData.Equals(...), throwing when it is null. Use object.Equals(this.VGrainMetaData, other.VGrainMetaData).
             return this.SignalUid == other.SignalUid &&
                    this.SourceDefinitionId == other.SourceDefinitionId &&
                    this.SourceDefinitionName == other.SourceDefinitionName &&
                    this.VGrainSourceId == other.VGrainSourceId &&
                    this.IsDoor == other.IsDoor &&
-                   this.VGrainMetaData.Equals(other.VGrainMetaData) &&
+                   object.Equals(this.VGrainMetaData, other.VGrainMetaData) &&
                    this.SendUtcTime == other.SendUtcTime &&
                    this.CarryMessageType == other.CarryMessageType &&
                    this.Origins.SequenceEqual(other.Origins) &&
@@ -389,9 +388,8 @@ namespace Democrite.Framework.Core.Abstractions.Signals
         /// <inheritdoc />
         protected override bool OnEquals(SignalSource other)
         {
-            //TO-DO from Opus 5.5 Data compared against container, never equal : OnEquals compares this.Data (TData) to otherData (SignalSource<TData>), so it is always false and two equal SignalSource<TData> never compare equal. Compare this.Data with otherData.Data (EqualityComparer<TData>.Default.Equals).
             return other is SignalSource<TData> otherData &&
-                   this.Data.Equals(otherData);
+                   EqualityComparer<TData>.Default.Equals(this.Data, otherData.Data);
         }
 
         /// <inheritdoc />

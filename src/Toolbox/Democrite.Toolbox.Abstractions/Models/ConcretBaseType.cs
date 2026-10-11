@@ -9,6 +9,7 @@ namespace Democrite.Toolbox.Models
     using System;
     using System.ComponentModel;
     using System.Runtime.Serialization;
+    using System.Threading;
 
     /// <summary>
     /// <see cref="AbstractType"/> representing a final type that could be directly be use
@@ -76,9 +77,12 @@ namespace Democrite.Toolbox.Models
         /// <inheritdoc />
         public sealed override Type ToType()
         {
-            if (this._cachedType == null)
-                this._cachedType = OnTypeResolution();
-            return this._cachedType!;
+            var cached = Volatile.Read(ref this._cachedType);
+            if (cached is not null)
+                return cached;
+
+            // Benign race: concurrent resolutions produce the same Type, first published value wins
+            return Interlocked.CompareExchange(ref this._cachedType, OnTypeResolution(), null) ?? this._cachedType!;
         }
 
         /// <summary>

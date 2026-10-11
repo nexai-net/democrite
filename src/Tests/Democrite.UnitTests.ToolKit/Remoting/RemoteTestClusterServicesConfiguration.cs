@@ -33,7 +33,7 @@ namespace Democrite.UnitTests.ToolKit.Remoting
                     var serviceType = Type.GetType(kv.Value);
                     ArgumentNullException.ThrowIfNull(serviceType);
 
-                    s.Add(new ServiceDescriptor(serviceType, serviceType.CreateRemoteServiceFrom(kv.Key)!.Object));
+                    s.Add(new ServiceDescriptor(serviceType, serviceType.CreateRemoteServiceFrom(kv.Key)!));
                 }
             });
         }

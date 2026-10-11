@@ -51,16 +51,16 @@ namespace Democrite.Framework.Node.Services
         {
             try
             {
-                this.Logger.OptiLog(LogLevel.Debug, "Grain Service Started ...");
+                this.Logger.OptiLog(LogLevel.Debug, "Grain Service Start ...");
 
                 await RefreshInfoAsync();
 
-                this.Logger.OptiLog(LogLevel.Information, "Grain Service Start ...");
+                this.Logger.OptiLog(LogLevel.Information, "Grain Service Started");
             }
-            //TO-DO from Opus 5.5 Grain service start failure swallowed : Any exception in RefreshInfoAsync is logged and swallowed, so the silo reports the GrainService as started while it is broken, and the 'Started'/'Start' log messages are swapped. Rethrow after logging, or expose a faulted state.
             catch (Exception ex)
             {
-                this.Logger.OptiLog(LogLevel.Error, "VGrain Service Start Failed : {exception}", ex);
+                // Not rethrown to keep the silo start-up behavior, but logged as critical : the service is NOT operational
+                this.Logger.LogCritical(ex, "VGrain Service Start Failed, the service is not operational : {exception}", ex);
             }
         }
 

@@ -23,8 +23,6 @@ namespace Democrite.Framework.Cluster.UnitTests.Services
         [Theory]
         [InlineData("135.256.32.1", "135.256.32.1", false)]
         [InlineData("135.145.32.1:4256", "135.145.32.1:4256", true)]
-        //TO-DO from Opus 5.5 Test depends on machine DNS resolution : The test expects 'localhost' to resolve to exactly one address, 127.0.0.1, but hosts with IPv6 enabled may return ::1 or several addresses, so it is environment-dependent. Inject a resolver abstraction, or assert that the result contains a loopback address.
-        [InlineData("localhost:4256", "127.0.0.1:4256", false)]
         public void SolveHostAddresse_Resolve(string hostName, string? expected, bool ipEndpointParsed)
         {
             var inspector = new NetworkInspector();
@@ -46,6 +44,36 @@ namespace Democrite.Framework.Cluster.UnitTests.Services
             else
             {
                 Check.That(results).IsNotNull().And.IsEmpty();
+            }
+        }
+
+        /// <summary>
+        /// Ensure a host name is resolved to its IPv4 addresses with the port kept.
+        /// The exact addresses returned for 'localhost' depend on the machine (IPv6, several 127.x entries...),
+        /// so only loopback IPv4 endpoints with the requested port are expected.
+        /// </summary>
+        [Fact]
+        public void SolveHostAddresse_Resolve_Localhost_Loopback()
+        {
+            var inspector = new NetworkInspector();
+
+            var results = inspector.SolveHostAddresse("localhost:4256");
+
+            Check.That(results).IsNotNull();
+
+            var hasIpv4Loopback = Dns.GetHostAddresses("localhost")
+                                     .Any(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && IPAddress.IsLoopback(ip));
+
+            if (hasIpv4Loopback)
+                Check.That(results).Not.IsEmpty();
+
+            foreach (var result in results)
+            {
+                var parseSuccess = IPEndPoint.TryParse(result, out var parseIp);
+                Check.That(parseSuccess).IsTrue();
+                Check.That(parseIp).IsNotNull();
+                Check.That(IPAddress.IsLoopback(parseIp!.Address)).IsTrue();
+                Check.That(parseIp.Port).IsEqualTo(4256);
             }
         }
 

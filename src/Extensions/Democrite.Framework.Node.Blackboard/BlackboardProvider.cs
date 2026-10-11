@@ -38,10 +38,14 @@ namespace Democrite.Framework.Node.Blackboard
         #region Fields
 
         private static readonly TimeSpan s_blackboardBuildAndRetreiveTimeout;
+        private static readonly long s_proxyCacheIdleTimeoutMs = (long)TimeSpan.FromMinutes(30).TotalMilliseconds;
+        private static readonly long s_proxyCachePurgeIntervalMs = (long)TimeSpan.FromMinutes(5).TotalMilliseconds;
+
         private readonly ILogger<IBlackboardProvider> _logger;
 
-        private readonly MultiKeyDictionary<string, BlackboardHandlerProxy> _blackboardProxiesByName;
-        private readonly Dictionary<Guid, BlackboardHandlerProxy> _blackboardProxies;
+        private readonly MultiKeyDictionary<string, ProxyCacheEntry> _blackboardProxiesByName;
+        private readonly Dictionary<Guid, ProxyCacheEntry> _blackboardProxies;
+        private long _lastProxyCachePurgeTick;
 
         private readonly ReaderWriterLockSlim _blackboardProxyLockerRW;
 
@@ -72,8 +76,9 @@ namespace Democrite.Framework.Node.Blackboard
         {
             this._logger = logger ?? NullLogger<BlackboardProvider>.Instance;
 
-            this._blackboardProxiesByName = new MultiKeyDictionary<string, BlackboardHandlerProxy>();
-            this._blackboardProxies = new Dictionary<Guid, BlackboardHandlerProxy>();
+            this._blackboardProxiesByName = new MultiKeyDictionary<string, ProxyCacheEntry>();
+            this._blackboardProxies = new Dictionary<Guid, ProxyCacheEntry>();
+            this._lastProxyCachePurgeTick = Environment.TickCount64;
             this._blackboardTemplateDefinitionProvider = blackboardTemplateDefinitionProvider;
             this._serviceProvider = serviceProvider;
             this._blackboardProxyLockerRW = new ReaderWriterLockSlim();
@@ -148,8 +153,8 @@ namespace Democrite.Framework.Node.Blackboard
 
             return GetBlackboardImplAsync(() =>
                                           {
-                                              if (this._blackboardProxiesByName.TryGetValue(keys, out var proxy))
-                                                  return proxy;
+                                              if (this._blackboardProxiesByName.TryGetValue(keys, out var entry))
+                                                  return entry.Touch();
                                               return null;
                                           },
                                           async (t) => await FecthBlackboardByNames(boardName, template, t),
@@ -176,8 +181,8 @@ namespace Democrite.Framework.Node.Blackboard
         {
             return GetBlackboardImplAsync(() =>
                                           {
-                                              if (_blackboardProxies.TryGetValue(uid, out var proxy))
-                                                  return proxy;
+                                              if (this._blackboardProxies.TryGetValue(uid, out var entry))
+                                                  return entry.Touch();
                                               return null;
                                           },
                                           async (_) => await this._blackboardRegistry.TryGetAsync(uid),
@@ -234,10 +239,13 @@ namespace Democrite.Framework.Node.Blackboard
                         var keys = new string[2] { blackboardId.BoardTemplateKey, blackboardId.BoardName };
                         var uid = blackboardId.Uid;
 
+                        // Evict proxies not used for a while to prevent unbounded growth and stale proxies
+                        PurgeIdleProxiesNoLock();
+
                         // Attention : In Theory could override a target
-                        //TO-DO from Opus 5.5 Proxy cache grows without bound : Proxies are cached by uid and by name forever, with no eviction on unregister or seal, so a long-running silo that creates many boards leaks memory and can return stale proxies. Add eviction (bounded or time-based cache, or removal on unregister).
-                        _blackboardProxies[uid] = newProxy;
-                        _blackboardProxiesByName[keys] = newProxy;
+                        var entry = new ProxyCacheEntry(newProxy, uid, keys);
+                        this._blackboardProxies[uid] = entry;
+                        this._blackboardProxiesByName[keys] = entry;
 
                         isNew = true;
                         result = newProxy;
@@ -261,6 +269,35 @@ namespace Democrite.Framework.Node.Blackboard
         }
 
         /// <summary>
+        /// Removes from the cache all proxies not accessed since <see cref="s_proxyCacheIdleTimeoutMs"/>.
+        /// </summary>
+        /// <remarks>
+        ///     Must be called under write lock.
+        ///     An evicted proxy is simply re-created from the registry on next request.
+        /// </remarks>
+        private void PurgeIdleProxiesNoLock()
+        {
+            var now = Environment.TickCount64;
+            if (now - this._lastProxyCachePurgeTick < s_proxyCachePurgeIntervalMs)
+                return;
+
+            this._lastProxyCachePurgeTick = now;
+
+            var idleEntries = this._blackboardProxies.Values
+                                                     .Where(e => now - e.LastAccessTick > s_proxyCacheIdleTimeoutMs)
+                                                     .ToArray();
+
+            foreach (var idle in idleEntries)
+            {
+                if (this._blackboardProxies.TryGetValue(idle.Uid, out var byUid) && ReferenceEquals(byUid, idle))
+                    this._blackboardProxies.Remove(idle.Uid);
+
+                if (this._blackboardProxiesByName.TryGetValue(idle.NameKeys, out var byName) && ReferenceEquals(byName, idle))
+                    this._blackboardProxiesByName.Remove(idle.NameKeys);
+            }
+        }
+
+        /// <summary>
         /// Checks the blackboard initialized asynchronous.
         /// </summary>
         private async Task CheckBlackboardInitializedAsync(IBlackboardRef result, CancellationToken token, Guid? callContextId)
@@ -274,7 +311,48 @@ namespace Democrite.Framework.Node.Blackboard
         protected override void DisposeEnd()
         {
             this._blackboardProxyLockerRW.Dispose();
+            this._blackboardProxiesByName.Dispose();
             base.DisposeEnd();
+        }
+
+        #endregion
+
+        #region Nested
+
+        /// <summary>
+        /// Proxy cache entry tracking last access time
+        /// </summary>
+        private sealed class ProxyCacheEntry
+        {
+            private long _lastAccessTick;
+
+            public ProxyCacheEntry(BlackboardHandlerProxy proxy, Guid uid, IReadOnlyCollection<string> nameKeys)
+            {
+                this.Proxy = proxy;
+                this.Uid = uid;
+                this.NameKeys = nameKeys;
+                this._lastAccessTick = Environment.TickCount64;
+            }
+
+            public BlackboardHandlerProxy Proxy { get; }
+
+            public Guid Uid { get; }
+
+            public IReadOnlyCollection<string> NameKeys { get; }
+
+            public long LastAccessTick
+            {
+                get { return Interlocked.Read(ref this._lastAccessTick); }
+            }
+
+            /// <summary>
+            /// Refresh last access time and return the proxy
+            /// </summary>
+            public BlackboardHandlerProxy Touch()
+            {
+                Interlocked.Exchange(ref this._lastAccessTick, Environment.TickCount64);
+                return this.Proxy;
+            }
         }
 
         #endregion

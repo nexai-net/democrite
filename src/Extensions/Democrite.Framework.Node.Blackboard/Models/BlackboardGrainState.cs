@@ -112,7 +112,16 @@ namespace Democrite.Framework.Node.Blackboard.Models
         /// </summary>
         public bool RemoveQuery(BlackboardBaseQuery request)
         {
-            return RemoveQuery(request.QueryUid);
+            // Queries are indexed by DeferredId.Uid, the query uid is the deferred source id
+            var toRemoves = this._queries.Where(kv => kv.Value.DeferredId.SourceId == request.QueryUid)
+                                         .Select(kv => kv.Key)
+                                         .ToArray();
+
+            var removed = false;
+            foreach (var key in toRemoves)
+                removed |= this._queries.Remove(key);
+
+            return removed;
         }
 
         /// <summary>

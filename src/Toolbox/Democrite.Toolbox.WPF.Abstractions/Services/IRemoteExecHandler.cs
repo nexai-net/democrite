@@ -14,6 +14,6 @@ namespace Democrite.Toolbox.WPF.Abstractions.Services
         /// <summary>
         /// Executes  target external after installed
         /// </summary>
-        Task<RemoteExecResultRemoteExecResult> ExecuteAsync(CancellationToken token, params string[] arguments);
+        Task<RemoteExecResult> ExecuteAsync(CancellationToken token, params string[] arguments);
     }
 }

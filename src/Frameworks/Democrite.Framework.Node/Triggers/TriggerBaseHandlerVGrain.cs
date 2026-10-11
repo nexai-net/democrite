@@ -213,8 +213,7 @@ namespace Democrite.Framework.Node.Triggers
                 var old = provider;
 
                 provider = this._dataSourceProviderFactory.GetProvider(dedicatedOutputDef);
-                //TO-DO from Opus 5.5 Duplicate key crash when provider is refreshed : When a cached provider exists but IsStillValidAsync returns false, the key is already in the dictionary, so Add throws ArgumentException and the trigger never fires again. Use the indexer (_dataSourceProviders[uid] = provider) instead.
-                this._dataSourceProviders.Add(dedicatedOutputDef.Uid, provider);
+                this._dataSourceProviders[dedicatedOutputDef.Uid] = provider;
 
                 object? state = null;
                 if (provider.UseState)
@@ -437,14 +436,11 @@ namespace Democrite.Framework.Node.Triggers
                         }
                     }
 
-                    //   tasks.Add(stream!.OnNextAsync(input));
-                    //TO-DO from Opus 5.5 Fire-and-forget stream publish loses errors : The OnNextAsync task is discarded, so publish failures go unobserved and the method reports success. ConfigureAwait on a task that is never awaited does nothing. Collect the tasks and await them, as the commented-out code intended.
-                    stream!.OnNextAsync(input).ConfigureAwait(false);
+                    tasks.Add(stream!.OnNextAsync(input));
                 }
             }
 
-            //await tasks.SafeWhenAllAsync(token);
-            return Task.CompletedTask;
+            return tasks.SafeWhenAllAsync(token);
         }
 
         /// <summary>

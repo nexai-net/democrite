@@ -41,7 +41,7 @@ namespace Democrite.Framework.Builders
         /// <summary>
         /// Builds <see cref="DefinitionMetaData"/> >
         /// </summary>
-        DefinitionMetaData Build();
+        DefinitionMetaData? Build();
     }
 
     /// <summary>
@@ -55,6 +55,6 @@ namespace Democrite.Framework.Builders
         /// <summary>
         /// Builds <see cref="DefinitionMetaData"/> >
         /// </summary>
-        DefinitionMetaData Build(out string? displayName, out string? namespaceIdentifier);
+        DefinitionMetaData? Build(out string? displayName, out string? namespaceIdentifier);
     }
 }

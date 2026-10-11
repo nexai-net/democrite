@@ -213,9 +213,9 @@ namespace Democrite.Framework.Core.Services
                                            ex);
                         }
 
-                        //TO-DO from Opus 5.5 Fallback builders recompiled on every call : When a fallback is used the compiled builder is not cached, so every id generation for that grain type rebuilds and compiles expression trees while holding the global write lock, which serializes all callers. Cache fallback builders too, or cache a negative result per type.
-                        if (builder.primaryGenerator != null && !useFallBack)
-                            this._cachedBuilder.Add(vgrainType, builder);
+                        // Builders (fallback included) only depend on the vgrain type format attribute, not on the call input, so they could always be cached
+                        if (builder.primaryGenerator != null)
+                            this._cachedBuilder[vgrainType] = builder;
                     }
 
                     CheckAndThrowIfDisposed();
@@ -371,8 +371,7 @@ namespace Democrite.Framework.Core.Services
             else if (string.IsNullOrEmpty(template) && !string.IsNullOrEmpty(fallback))
             {
                 useFallback = true;
-                //TO-DO from Opus 5.5 Fallback produces string for Guid/long keys : For Guid or Long id formats the fallback returns a raw string constant, so VGrainId.GetVGrainIdPrimaryValue<Guid/long>() later throws InvalidCastException. Parse the fallback into the expected type (Guid.Parse / long.Parse) here and at line 466.
-                return Expression.Constant(fallback, typeof(string));
+                return BuildFallbackConstant(fallback!, expectGuid, expectLong);
             }
 
             var hasFallbackValue = !string.IsNullOrEmpty(fallback);
@@ -465,11 +464,25 @@ namespace Democrite.Framework.Core.Services
                 {
                     logger.OptiLog(LogLevel.Warning, DemocriteCoreLogSR.VGrainIdGenerationIssueTryFallback, vgrainType, ex);
                     useFallback = true;
-                    return Expression.Constant(fallback, typeof(string));
+                    return BuildFallbackConstant(fallback!, expectGuid, expectLong);
                 }
 
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Build the fallback constant expression typed as expected by the id format (Guid, long or string)
+        /// </summary>
+        private static ConstantExpression BuildFallbackConstant(string fallback, bool expectGuid, bool expectLong)
+        {
+            if (expectGuid)
+                return Expression.Constant(Guid.Parse(fallback), typeof(Guid));
+
+            if (expectLong)
+                return Expression.Constant(long.Parse(fallback), typeof(long));
+
+            return Expression.Constant(fallback, typeof(string));
         }
 
         /// <summary>

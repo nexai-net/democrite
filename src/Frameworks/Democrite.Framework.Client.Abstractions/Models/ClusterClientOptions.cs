@@ -22,7 +22,11 @@ namespace Democrite.Framework.Client.Abstractions.Models
     {
         #region Fields
 
-        public const string ConfiguratioName = "Cluster";
+        public const string ConfigurationName = "Cluster";
+
+        [Obsolete("Misspelled, use " + nameof(ConfigurationName) + " instead.")]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        public const string ConfiguratioName = ConfigurationName;
 
         #endregion
 

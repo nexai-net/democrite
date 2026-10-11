@@ -40,7 +40,9 @@ namespace Democrite.Toolbox.Helpers
         {
             return CancellationHelper.SingleAccessScope(this._locker,
                                                         () => this._cancellationSource,
-                                                        c => this._cancellationSource = c);
+                                                        c => this._cancellationSource = c,
+                                                        null,
+                                                        token is not null ? new[] { token.Value } : Array.Empty<CancellationToken>());
         }
 
         /// <summary>

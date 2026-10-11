@@ -136,9 +136,8 @@ namespace Democrite.Framework.Core.Abstractions.Customizations
         /// <inheritdoc />
         public bool Validate(ILogger logger, bool matchWarningAsError = false)
         {
-            //TO-DO from Opus 5.5 Inverted redirection condition signature check : Validation fails when the condition parameters DO match the expected signature and passes when they don't. Negate the SequenceEqual check.
             if (this.RedirectionCondition is not null &&
-                this.RedirectionCondition.Parameters.Select(k => k.Type).SequenceEqual(s_expectedConditionParams))
+                !this.RedirectionCondition.Parameters.Select(k => k.Type).SequenceEqual(s_expectedConditionParams))
             {
                 logger.OptiLog(LogLevel.Critical, "Redirection condition must follow the signature : func(Type originTarget, object? Input, IExecutionContext? ctx, string? grainPrefixExtensions) => true");
                 return false;
@@ -177,8 +176,7 @@ namespace Democrite.Framework.Core.Abstractions.Customizations
         /// <inheritdoc />
         public override bool Equals(object? obj)
         {
-            //TO-DO from Opus 5.5 Equals(object) excludes class-name redirections : Only VGrainInterfaceRedirectionDefinition is accepted, so VGrainClassNameRedirectionDefinition instances are never equal via object.Equals (collections, Distinct). Test for the base VGrainRedirectionDefinition.
-            if (obj is VGrainInterfaceRedirectionDefinition redirectionDefinition)
+            if (obj is VGrainRedirectionDefinition redirectionDefinition)
                 return Equals(redirectionDefinition);
             return false;
         }

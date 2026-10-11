@@ -34,14 +34,6 @@ namespace Democrite.Toolbox.Memories
             this._items = new Dictionary<Guid, TItem>();
         }
 
-        /// <summary>
-        /// Finalizes an instance of the <see cref="SafeContainer{TItem}"/> class.
-        /// </summary>
-        ~SafeContainer()
-        {
-            Dispose(true);
-        }
-
         #endregion
 
         #region Properties

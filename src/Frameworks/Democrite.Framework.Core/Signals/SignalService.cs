@@ -200,7 +200,7 @@ namespace Democrite.Framework.Core.Signals
             var signalVGrain = this._grainFactory.GetGrain<ISignalVGrain>(signalId.Uid) ?? throw new SignalNotFoundException(signalId.Name ?? signalId.Uid.ToString());
             token.ThrowIfCancellationRequested();
 
-            return await SubscribeImplAsync(signalId.Uid, receiver, signalVGrain, token);
+            return await SubscribeImplAsync(signalId.Uid, false, receiver, signalVGrain, token);
         }
 
         /// <inheritdoc />
@@ -209,7 +209,7 @@ namespace Democrite.Framework.Core.Signals
             var doorVGrain = this._grainFactory.GetGrain<IDoorSignalVGrain>(doorId.Uid) ?? throw new DoorNotFoundException("Door:" + doorId.Uid + "/" + doorId.Name);
             token.ThrowIfCancellationRequested();
 
-            return await SubscribeImplAsync(doorId.Uid, receiver, doorVGrain, token);
+            return await SubscribeImplAsync(doorId.Uid, true, receiver, doorVGrain, token);
         }
 
         /// <inheritdoc />
@@ -257,12 +257,12 @@ namespace Democrite.Framework.Core.Signals
         }
 
         /// <inheritdoc cref="ISignalService.SubscribeAsync(string, ISignalReceiver, CancellationToken)" />
-        private static async Task<SubscriptionId> SubscribeImplAsync(Guid signalId, ISignalReceiver receiver, ISignalHandler signalHandler, CancellationToken token)
+        private static async Task<SubscriptionId> SubscribeImplAsync(Guid signalId, bool fromDoor, ISignalReceiver receiver, ISignalHandler signalHandler, CancellationToken token)
         {
             using (var cancelSource = new GrainCancellationTokenSource())
             {
-                //TO-DO from Opus 5.5 Registration outlives disposed GrainCancellationTokenSource : The registration is never disposed. If the caller's token is cancelled after the using block, Cancel() runs on a disposed GrainCancellationTokenSource and throws ObjectDisposedException on the cancelling thread, and the closure also leaks. Use 'using var reg = token.Register(...)'.
-                token.Register(() => cancelSource.Cancel());
+                // Registration disposed before the source to never cancel a disposed GrainCancellationTokenSource
+                using var registration = token.Register(() => cancelSource.Cancel());
 
                 var uid = Guid.Empty;
 
@@ -271,8 +271,7 @@ namespace Democrite.Framework.Core.Signals
                 else
                     uid = await signalHandler.SubscribeAsync(receiver.GetDedicatedGrainId<ISignalReceiver>(), cancelSource.Token);
 
-                //TO-DO from Opus 5.5 Door subscriptions flagged as signal subscriptions : SubscribeImplAsync always sets FromDoor=false, including when SubscribeAsync(DoorId, ...) calls it. UnsubscribeAsync(SubscriptionId) then targets ISignalVGrain instead of IDoorSignalVGrain, so door subscriptions can never be removed. Pass a fromDoor flag from each caller.
-                return new SubscriptionId(signalId, false, uid);
+                return new SubscriptionId(signalId, fromDoor, uid);
             }
         }
 

@@ -108,14 +108,13 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
             /// Error code category data
             /// </summary>
             [Description("Error code category Data")]
-            //TO-DO from Opus 5.5 Duplicate category value Storage/Data : Categories.Data has the same value as Categories.Storage (0x11), so error codes cannot be distinguished and Enum.GetName returns the wrong name. Give Data a unique value (and check Query/Entity ordering).
-            Data = 0x_11_00_00_00_00_00_00_00,
+            Data = 0x_12_00_00_00_00_00_00_00,
 
             /// <summary>
             /// Error code category query
             /// </summary>
             [Description("Error code category Query")]
-            Query = 0x_12_00_00_00_00_00_00_00,
+            Query = 0x_13_00_00_00_00_00_00_00,
 
             /// <summary>
             /// Error code category Entity
@@ -180,44 +179,43 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
             /// Error about input information
             /// </summary>
             [Description("Error about input information.")]
-            //TO-DO from Opus 5.5 PartType values overlap ErrorType bit range : PartType Input..Deferred are encoded in the third byte (GenericMask), not the MacroTypeMask byte, so they collide with ErrorType (e.g. Input == NotInitialized, and Input|Invalid == Output). Move them to 0x_00_09_.., 0x_00_0A_.. etc.
-            Input = 0x_00_00_09_00_00_00_00_00,
+            Input = 0x_00_09_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about output information
             /// </summary>
             [Description("Error about input information.")]
-            Output = 0x_00_00_0A_00_00_00_00_00,
+            Output = 0x_00_0A_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about Configuration information
             /// </summary>
             [Description("Error about input information.")]
-            Configuration = 0x_00_00_0B_00_00_00_00_00,
+            Configuration = 0x_00_0B_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about ETAG information
             /// </summary>
             [Description("Error about input ETAG.")]
-            Etag = 0x_00_00_0C_00_00_00_00_00,
+            Etag = 0x_00_0C_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about Insert
             /// </summary>
             [Description("Error about Insert.")]
-            Insert = 0x_00_00_0D_00_00_00_00_00,
+            Insert = 0x_00_0D_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about Right
             /// </summary>
             [Description("Error about Right.")]
-            Right = 0x_00_00_0E_00_00_00_00_00,
+            Right = 0x_00_0E_00_00_00_00_00_00,
 
             /// <summary>
             /// Error about Right
             /// </summary>
             [Description("Error about Deferred.")]
-            Deferred = 0x_00_00_0F_00_00_00_00_00,
+            Deferred = 0x_00_0F_00_00_00_00_00_00,
         }
 
         public enum ErrorType : ulong
@@ -295,13 +293,11 @@ namespace Democrite.Framework.Core.Abstractions.Exceptions
                                   Int32? customErrorCode = 0)
 #pragma warning restore IDE0049 // Simplify Names
         {
-#pragma warning disable CS0675 // Bitwise-or operator used on a sign-extended operand
-            //TO-DO from Opus 5.5 Negative custom code corrupts error code : A negative Int32 customErrorCode is sign-extended to ulong (CS0675 suppressed), setting all category/macro/generic bits. Mask it: ((ulong)(uint)(customErrorCode ?? 0)) & CustomErrorCodeMask.
+            // Cast through uint to avoid the sign-extension of negative custom codes that would corrupt category/macro/generic bits
             return (ulong)category |
                    (ulong)macro |
                    (ulong)genericType |
-                   ((ulong)(customErrorCode ?? 0));
-#pragma warning restore CS0675 // Bitwise-or operator used on a sign-extended operand
+                   (unchecked((ulong)(uint)(customErrorCode ?? 0)) & CustomErrorCodeMask);
         }
 
         /// <summary>

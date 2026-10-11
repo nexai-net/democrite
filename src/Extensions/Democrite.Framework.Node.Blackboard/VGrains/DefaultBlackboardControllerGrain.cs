@@ -105,8 +105,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             // if a preparation slot is waiting then will this on instead of inserting a new one
             if (issue.ConflictRecords.Any(c => c.Status == RecordStatusEnum.Preparation && c.LogicalType == sourceInjected.LogicalType))
             {
-                //TO-DO from Opus 5.5 Preparation slot from another logical type reused : The Any() check filters on Preparation status and matching LogicalType, but First() filters on status only, so data can be written into a slot of a different logical type. Use the same predicate in both calls.
-                var availableSlot = issue.ConflictRecords.First(c => c.Status == RecordStatusEnum.Preparation);
+                var availableSlot = issue.ConflictRecords.First(c => c.Status == RecordStatusEnum.Preparation && c.LogicalType == sourceInjected.LogicalType);
                 var cmds = new BlackboardCommand[]
                 {
                     new BlackboardCommandStorageAddRecord<TData>(new DataRecordContainer<TData?>(sourceInjected.LogicalType,

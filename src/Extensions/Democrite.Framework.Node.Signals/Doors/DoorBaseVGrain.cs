@@ -345,7 +345,9 @@ namespace Democrite.Framework.Node.Signals.Doors
 
                 try
                 {
-                    //TO-DO from Opus 5.5 Door re-subscribes without dropping old subscriptions : On every definition update the door subscribes to all sources again, but it never unsubscribes the IDs stored in _subscriptionIds. Sources removed from the definition keep stimulating the door and subscriptions pile up. Unsubscribe the previous IDs (and clear the set) before subscribing, and also do this on deactivation.
+                    var previousSubscriptionIds = this._subscriptionIds.ToArray();
+                    this._subscriptionIds.Clear();
+
                     foreach (var signalSource in doorDefinition.SignalSourceIds)
                     {
                         var subscrptionId = await this._signalService.SubscribeAsync(signalSource, this, token);
@@ -356,6 +358,22 @@ namespace Democrite.Framework.Node.Signals.Doors
                     {
                         var subscrptionId = await this._signalService.SubscribeAsync(doorSource, this, token);
                         this._subscriptionIds.Add(subscrptionId);
+                    }
+
+                    // Drop subscriptions of the previous definition that are not used anymore
+                    foreach (var oldSubscriptionId in previousSubscriptionIds)
+                    {
+                        if (this._subscriptionIds.Contains(oldSubscriptionId))
+                            continue;
+
+                        try
+                        {
+                            await this._signalService.UnsubscribeAsync(oldSubscriptionId, token);
+                        }
+                        catch (Exception ex)
+                        {
+                            this.Logger.OptiLog(LogLevel.Warning, "Door previous subscription {subscriptionId} removal failed {exception}", oldSubscriptionId, ex);
+                        }
                     }
 
                     await this._concurrencyStateLock.WaitAsync(token);
@@ -507,8 +525,8 @@ namespace Democrite.Framework.Node.Signals.Doors
                 if (def.HistoryMaxRetention != null)
                     hadCleaned |= state.ClearHistory(def.HistoryMaxRetention.Value);
 
-                if (def.NotConsumedMaxRetiention != null)
-                    hadCleaned |= state.ClearNotConsumed(def.NotConsumedMaxRetiention.Value);
+                if (def.NotConsumedMaxRetention != null)
+                    hadCleaned |= state.ClearNotConsumed(def.NotConsumedMaxRetention.Value);
             }
 
             // push only if signal cache state have changed

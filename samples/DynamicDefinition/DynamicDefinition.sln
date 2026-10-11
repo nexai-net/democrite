@@ -7,7 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{73E40F
 	ProjectSection(SolutionItems) = preProject
 		Directory.Packages.props = Directory.Packages.props
 		Readme.md = Readme.md
-		SharedFrameworkAssmblyInfo.props = SharedFrameworkAssmblyInfo.props
+		SharedFrameworkAssemblyInfo.props = SharedFrameworkAssemblyInfo.props
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DynamicDefinition.Api", "DynamicDefinition.Api\DynamicDefinition.Api.csproj", "{7B281D29-1FAB-4484-AE25-1F5DA1D2FFFB}"

@@ -27,7 +27,7 @@ namespace Democrite.Framework.Core.Executions
         #region Fields
 
         private readonly LambdaExpression _expression;
-        //TO-DO from Opus 5.5 Requested grain id is silently ignored : _forcedGrainId is stored but never read: RunImplAsync resolves the grain through IVGrainProvider.GetVGrainAsync(input, ctx), so VGrain<T>(Guid/long/string id) calls the wrong activation. Pass the forced id through to grain resolution, for example with a GetVGrainAsync overload that takes an IdSpan/GrainId.
+        private readonly Lazy<Func<object?[], object?>> _compiledInvoker;
         private readonly IdSpan? _forcedGrainId;
         private readonly TConfig? _config;
         private readonly TInput? _input;
@@ -54,6 +54,7 @@ namespace Democrite.Framework.Core.Executions
 
             this._forcedGrainId = forcedGrainId;
             this._expression = (LambdaExpression)expression;
+            this._compiledInvoker = new Lazy<Func<object?[], object?>>(() => BuildInvoker(this._expression));
             this._config = config;
             this._input = input;
         }
@@ -77,6 +78,12 @@ namespace Democrite.Framework.Core.Executions
         protected override object? GetInput()
         {
             return this._input;
+        }
+
+        /// <inheritdoc />
+        protected override IdSpan? GetForcedGrainId()
+        {
+            return this._forcedGrainId;
         }
 
         /// <inheritdoc />
@@ -133,16 +140,49 @@ namespace Democrite.Framework.Core.Executions
                                              })
                                              .ToArray();
 
-            // Compile expression into executable lambda
-            //TO-DO from Opus 5.5 Expression compiled and DynamicInvoked per call : Every execution compiles the lambda expression (expensive JIT) and calls it through DynamicInvoke, which is slow and wraps exceptions in TargetInvocationException. Compile once, lazily or in the constructor, into a typed delegate, or cache compiled delegates per expression.
-            var func = this._expression.Compile();
+            // Compile expression into executable lambda (once per launcher, typed invoker without DynamicInvoke)
+            var func = this._compiledInvoker.Value;
 
-            var result = func.DynamicInvoke(parameters);
+            var result = func(parameters);
 
             if (result is null || result.GetType().IsAssignableTo(typeof(Task)) == false)
                 throw new InvalidOperationException("The action called MUST return a Task");
 
             return (Task)result;
+        }
+
+        /// <summary>
+        /// Builds a typed invoker <c>object?[] -&gt; object?</c> from <see cref="_expression"/> to avoid <see cref="Delegate.DynamicInvoke(object?[])"/>
+        /// </summary>
+        private static Func<object?[], object?> BuildInvoker(LambdaExpression lambda)
+        {
+            var argsParameter = Expression.Parameter(typeof(object[]), "args");
+
+            var arguments = lambda.Parameters
+                                  .Select((p, indx) =>
+                                  {
+                                      var arg = Expression.ArrayIndex(argsParameter, Expression.Constant(indx));
+
+                                      // Same as DynamicInvoke: null value for a value type parameter is replaced by default
+                                      if (p.Type.IsValueType && Nullable.GetUnderlyingType(p.Type) is null)
+                                      {
+                                          return (Expression)Expression.Condition(Expression.Equal(arg, Expression.Constant(null)),
+                                                                                  Expression.Default(p.Type),
+                                                                                  Expression.Convert(arg, p.Type));
+                                      }
+
+                                      return Expression.Convert(arg, p.Type);
+                                  })
+                                  .ToArray();
+
+            Expression body = Expression.Invoke(lambda, arguments);
+
+            if (lambda.ReturnType == typeof(void))
+                body = Expression.Block(body, Expression.Constant(null, typeof(object)));
+            else if (lambda.ReturnType != typeof(object))
+                body = Expression.Convert(body, typeof(object));
+
+            return Expression.Lambda<Func<object?[], object?>>(body, argsParameter).Compile();
         }
 
         #endregion

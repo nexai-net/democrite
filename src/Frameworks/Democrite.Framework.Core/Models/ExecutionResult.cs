@@ -149,12 +149,15 @@ namespace Democrite.Framework.Core.Models
                                                                 string? message = null,
                                                                 bool? succeeded = null)
         {
+            var success = exception == null && (succeeded == null || succeeded == true);
+
             return new ExecutionResult<TResult>(executionContext.FlowUID,
-                                                exception == null && (succeeded == null || succeeded == true),
+                                                success,
                                                 exception is OperationCanceledException,
                                                 (exception is IDemocriteException democriteException ? democriteException.ErrorCode.ToString() : string.Empty),
                                                 GetMessage(exception, message),
-                                                result);
+                                                result,
+                                                hasOutput: success && result is not null);
         }
 
         /// <summary>
@@ -205,8 +208,31 @@ namespace Democrite.Framework.Core.Models
                    cancelled,
                    errorCode,
                    message,
-                   //TO-DO from Opus 5.5 HasOutput false for legitimate default values : A valid result equal to default(TResult), such as 0, false or an empty struct, is reported as HasOutput == false, which callers may treat as no result. Pass an explicit hasOutput flag based on whether the execution produced a value.
                    !EqualityComparer<TResult>.Default.Equals(output, default),
+                   typeof(TResult).Name)
+        {
+            this.Output = output;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ExecutionResult{TResult}"/> class with an explicit <paramref name="hasOutput"/> information
+        /// </summary>
+        /// <remarks>
+        ///     Use this constructor when the execution may legitimately produce a value equal to default(<typeparamref name="TResult"/>) (0, false, empty struct ...)
+        /// </remarks>
+        public ExecutionResult(Guid executionId,
+                               bool succeeded,
+                               bool cancelled,
+                               string? errorCode,
+                               string? message,
+                               TResult? output,
+                               bool hasOutput)
+            : base(executionId,
+                   succeeded,
+                   cancelled,
+                   errorCode,
+                   message,
+                   hasOutput,
                    typeof(TResult).Name)
         {
             this.Output = output;

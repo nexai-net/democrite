@@ -9,6 +9,9 @@ namespace Democrite.Framework.Node.Services
     using Democrite.Framework.Node.Abstractions.Services;
 
     using Democrite.Toolbox.Disposables;
+    using Democrite.Toolbox.Extensions;
+
+    using Microsoft.Extensions.Logging;
 
     using System;
     using System.Threading.Tasks;
@@ -23,6 +26,7 @@ namespace Democrite.Framework.Node.Services
 
         private readonly ISignalLocalGrainServiceRelayClient _signalLocalGrainServiceRelayClient;
         private readonly SemaphoreSlim _subscribeLocker;
+        private readonly ILogger _logger;
 
         private readonly Dictionary<Guid, Task<SubscriptionId>> _signalSubscribe;
         private readonly Dictionary<Guid, CallbackInfo> _signalSubscribeCallback;
@@ -34,9 +38,11 @@ namespace Democrite.Framework.Node.Services
         /// <summary>
         /// Initializes a new instance of the <see cref="SignalLocalServiceRelay"/> class.
         /// </summary>
-        public SignalLocalServiceRelay(ISignalLocalGrainServiceRelayClient signalLocalGrainServiceRelayClient)
+        public SignalLocalServiceRelay(ISignalLocalGrainServiceRelayClient signalLocalGrainServiceRelayClient,
+                                       ILogger<ISignalLocalServiceRelay> logger)
         {
             this._signalLocalGrainServiceRelayClient = signalLocalGrainServiceRelayClient;
+            this._logger = logger;
             this._signalSubscribeCallback = new Dictionary<Guid, CallbackInfo>();
             this._signalSubscribe = new Dictionary<Guid, Task<SubscriptionId>>();
 
@@ -98,9 +104,11 @@ namespace Democrite.Framework.Node.Services
 
                 if (!this._signalSubscribe.TryGetValue(signalId.Uid, out subscriptionIdTask))
                 {
-                    //TO-DO from Opus 5.5 Faulted subscription cached forever : The subscribe Task is cached before it completes. If it faults, every later subscriber reuses the faulted task and the signal is never relayed. Await the task (or check it is faulted) and evict it on failure.
                     subscriptionIdTask = this._signalLocalGrainServiceRelayClient.Subscribe(signalId);
                     this._signalSubscribe.Add(signalId.Uid, subscriptionIdTask);
+
+                    // Evict the subscription if it failed, to let the next subscriber retry
+                    _ = EvictSubscriptionOnFaultAsync(signalId.Uid, subscriptionIdTask);
                 }
 
                 var subscription = new CallbackInfo(Guid.NewGuid(), signalId.Uid, action, predicated);
@@ -142,16 +150,61 @@ namespace Democrite.Framework.Node.Services
 
             if (unsubscribeTask is not null)
             {
-                if (unsubscribeTask.IsCompletedSuccessfully == false)
-                {
-                    // TODO : managed subscription un finished
-                    return;
-                }
+                // Attention to dead lock : never block, the remote unsubscribe is chained on the subscription task (even if still pending)
+                _ = UnsubscribeRemoteAsync(unsubscribeTask);
+            }
+        }
 
-                //// Attention to dead lock
-                //TO-DO from Opus 5.5 Unsubscribe is fire-and-forget and can leak : The Unsubscribe task is discarded, so errors are lost and ConfigureAwait does nothing. When the subscription task is still pending, the remote subscription is never removed (see the TODO). Chain the unsubscribe on the subscription task and log faults.
-                var subscritionIdTask = this._signalLocalGrainServiceRelayClient.Unsubscribe(unsubscribeTask.Result);
-                subscritionIdTask.ConfigureAwait(false);
+        /// <summary>
+        /// Wait for the remote subscription and then remove it; failures are logged.
+        /// </summary>
+        private async Task UnsubscribeRemoteAsync(Task<SubscriptionId> subscriptionTask)
+        {
+            SubscriptionId subscriptionId;
+            try
+            {
+                subscriptionId = await subscriptionTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Subscription failed, nothing to unsubscribe (failure already logged by EvictSubscriptionOnFaultAsync)
+                return;
+            }
+
+            try
+            {
+                await this._signalLocalGrainServiceRelayClient.Unsubscribe(subscriptionId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this._logger.OptiLog(LogLevel.Error, "Signal relay unsubscribe failed {subscriptionId} : {exception}", subscriptionId, ex);
+            }
+        }
+
+        /// <summary>
+        /// Remove the cached subscription task if it fails.
+        /// </summary>
+        private async Task EvictSubscriptionOnFaultAsync(Guid signalUid, Task<SubscriptionId> subscriptionTask)
+        {
+            try
+            {
+                await subscriptionTask.ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex)
+            {
+                this._logger.OptiLog(LogLevel.Error, "Signal relay subscription failed for signal {signalUid} : {exception}", signalUid, ex);
+            }
+
+            await this._subscribeLocker.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (this._signalSubscribe.TryGetValue(signalUid, out var current) && ReferenceEquals(current, subscriptionTask))
+                    this._signalSubscribe.Remove(signalUid);
+            }
+            finally
+            {
+                this._subscribeLocker.Release();
             }
         }
 

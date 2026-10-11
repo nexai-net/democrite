@@ -7,7 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{73E40F
 	ProjectSection(SolutionItems) = preProject
 		Directory.Packages.props = Directory.Packages.props
 		Readme.md = Readme.md
-		SharedFrameworkAssmblyInfo.props = SharedFrameworkAssmblyInfo.props
+		SharedFrameworkAssemblyInfo.props = SharedFrameworkAssemblyInfo.props
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Stream.Console", "Stream.Console\Stream.Console.csproj", "{CC84207A-DE5F-41EF-B530-A385B93C7FDC}"

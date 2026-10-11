@@ -72,6 +72,20 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
         }
 
         /// <inheritdoc />
+        protected override bool OnEquals(TriggerDefinition other)
+        {
+            return other is SignalTriggerDefinition otherSignal &&
+                   object.Equals(this.ListenSignal, otherSignal.ListenSignal) &&
+                   object.Equals(this.ListenDoor, otherSignal.ListenDoor);
+        }
+
+        /// <inheritdoc />
+        protected override int OnGetHashCode()
+        {
+            return HashCode.Combine(this.ListenSignal, this.ListenDoor);
+        }
+
+        /// <inheritdoc />
         protected override bool OnValidate(ILogger logger, bool matchWarningAsError = false)
         {
             var valid = true;

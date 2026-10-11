@@ -29,6 +29,11 @@ namespace Democrite.VGrains.Web
     {
         #region Fields
 
+        /// <summary>
+        /// Maximum page size accepted (10 MB)
+        /// </summary>
+        private const long MAX_CONTENT_SIZE = 10 * 1024 * 1024;
+
         private readonly IHttpClientFactory _httpClientFactory;
 
         #endregion
@@ -52,14 +57,28 @@ namespace Democrite.VGrains.Web
         /// <inheritdoc />
         public async Task<HtmlPage> FetchPageAsync(Uri pageUrl, IExecutionContext executionContext)
         {
+            ArgumentNullException.ThrowIfNull(pageUrl);
+
+            if (!pageUrl.IsAbsoluteUri || (pageUrl.Scheme != Uri.UriSchemeHttp && pageUrl.Scheme != Uri.UriSchemeHttps))
+                throw new ArgumentException("Only absolute http/https URLs are supported : " + pageUrl, nameof(pageUrl));
+
+            var token = executionContext?.CancellationToken ?? default;
+
             using (var client = this._httpClientFactory.CreateClient())
             {
-                //TO-DO from Opus 5.5 Unbounded, unchecked HTTP fetch (SSRF risk) : Any input URL is fetched, including internal or metadata endpoints, with no cancellation token, no size limit and no status check, and the HttpResponseMessage is not disposed. Pass executionContext.CancellationToken, wrap the response in using, call EnsureSuccessStatusCode, cap the content length and validate the scheme and host against an allow-list.
-                var pageRawResponse = await client.GetAsync(pageUrl);
+                // Content is buffered (default completion option) and HttpClient throws if it exceeds this limit
+                client.MaxResponseContentBufferSize = MAX_CONTENT_SIZE;
 
-                var contentString = await (pageRawResponse.Content?.ReadAsStringAsync() ?? Task.FromResult(string.Empty));
+                using (var pageRawResponse = await client.GetAsync(pageUrl, token))
+                {
+                    pageRawResponse.EnsureSuccessStatusCode();
 
-                return new HtmlPage(pageUrl, contentString);
+                    var contentString = pageRawResponse.Content is null
+                                                ? string.Empty
+                                                : await pageRawResponse.Content.ReadAsStringAsync(token);
+
+                    return new HtmlPage(pageUrl, contentString);
+                }
             }
         }
 

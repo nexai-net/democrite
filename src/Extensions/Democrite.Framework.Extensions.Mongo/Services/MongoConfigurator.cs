@@ -31,6 +31,7 @@ namespace Democrite.Framework.Extensions.Mongo.Services
         #region Fields
 
         private const string URI_TYPE = "mongodb://";
+        private const string SRV_URI_TYPE = "mongodb+srv://";
 
         #endregion
 
@@ -43,9 +44,11 @@ namespace Democrite.Framework.Extensions.Mongo.Services
         {
             ArgumentNullException.ThrowIfNullOrEmpty(connectionString);
 
-            //TO-DO from Opus 5.5 mongodb+srv connection strings get mangled : A 'mongodb+srv://...' string does not start with 'mongodb://', so it becomes 'mongodb://mongodb+srv://...' and Atlas/SRV connections break. Accept both schemes (and compare case-insensitively) before adding the prefix.
-            if (!connectionString.StartsWith(URI_TYPE))
+            if (!connectionString.StartsWith(URI_TYPE, StringComparison.OrdinalIgnoreCase) &&
+                !connectionString.StartsWith(SRV_URI_TYPE, StringComparison.OrdinalIgnoreCase))
+            {
                 connectionString = URI_TYPE + connectionString;
+            }
 
             if (!Uri.TryCreate(connectionString, UriKind.Absolute, out _))
             {

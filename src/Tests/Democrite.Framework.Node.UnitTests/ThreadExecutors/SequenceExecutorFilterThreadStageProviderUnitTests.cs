@@ -19,8 +19,6 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
 
     using Microsoft.Extensions.DependencyInjection;
 
-    using Moq;
-
     using NFluent;
 
     using NSubstitute;
@@ -132,19 +130,19 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
 
                 var diagnosticLogs = new List<IDiagnosticInOutLog>();
 
-                var mockDiagnositicLogger = new Mock<IDiagnosticLogger>(MockBehavior.Strict);
-                mockDiagnositicLogger.Setup(m => m.Log(It.IsAny<IDiagnosticInOutLog>()))
-                                     .Callback<IDiagnosticInOutLog>((log) => diagnosticLogs.Add(log));
+                var mockDiagnositicLogger = Substitute.For<IDiagnosticLogger>();
+                mockDiagnositicLogger.When(m => m.Log(Arg.Any<IDiagnosticInOutLog>()))
+                                     .Do(ci => diagnosticLogs.Add(ci.ArgAt<IDiagnosticInOutLog>(0)));
 
-                var mockVGrainProvider = new Mock<IVGrainProvider>(MockBehavior.Strict);
+                var mockVGrainProvider = Substitute.For<IVGrainProvider>();
 
                 // ACT
                 var result = await handler.ExecAsync(filterDefinition,
                                                      input,
                                                      execContext,
                                                      logger,
-                                                     mockDiagnositicLogger.Object,
-                                                     mockVGrainProvider.Object,
+                                                     mockDiagnositicLogger,
+                                                     mockVGrainProvider,
                                                      () => throw new InvalidOperationException("No need to get secure token"));
 
                 // Check
@@ -154,8 +152,9 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
 
                 await result.result;
 
-                mockDiagnositicLogger.Verify(m => m.Log(It.IsAny<IDiagnosticInOutLog>()), Times.Exactly(2));
-                mockDiagnositicLogger.VerifyNoOtherCalls();
+                mockDiagnositicLogger.Received(2).Log(Arg.Any<IDiagnosticInOutLog>());
+                Check.That(mockDiagnositicLogger.ReceivedCalls()).CountIs(2);
+                Check.That(mockVGrainProvider.ReceivedCalls()).IsEmpty();
 
                 Check.That(diagnosticLogs).CountIs(2);
 

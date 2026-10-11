@@ -38,7 +38,7 @@ namespace Democrite.Framework.Builders.UnitTests.Signals
             Check.That(simpleDefinition!.DoorId.Uid).IsEqualTo(simpleDefinition.Uid);
             Check.That(simpleDefinition!.DoorId.Name).IsNotNull().And.IsNotEmpty();
             Check.That(simpleDefinition!.HistoryMaxRetention).IsEqualTo(DoorDefinition.DEFAULT_HISTORY_RETENTION);
-            Check.That(simpleDefinition!.NotConsumedMaxRetiention).IsEqualTo(DoorDefinition.DEFAULT_NOT_CONSUMED_RETENTION);
+            Check.That(simpleDefinition!.NotConsumedMaxRetention).IsEqualTo(DoorDefinition.DEFAULT_NOT_CONSUMED_RETENTION);
             Check.That(simpleDefinition!.RetentionMaxDelay).IsEqualTo(DoorDefinition.DEFAULT_RETENTION_MAX_DELAY);
         }
 

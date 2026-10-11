@@ -17,12 +17,11 @@ namespace Democrite.Framework.Core.Abstractions.Models
     /// Definition used to identify a method and how to call it.
     /// </summary>
     /// <seealso cref="IEquatable{ModelDefinition}" />
-    /// <seealso cref="IEquatable{MethodInfo}" />
     [Serializable]
     [Immutable]
     [DataObject]
     [ImmutableObject(true)]
-    public sealed class CallMethodDefinition : IEquatable<CallMethodDefinition>, IEquatable<MethodInfo>
+    public sealed class CallMethodDefinition : IEquatable<CallMethodDefinition>
     {
         #region Ctor
 
@@ -97,8 +96,13 @@ namespace Democrite.Framework.Core.Abstractions.Models
                     (this.GenericImplementationTypes?.SequenceEqual(other.GenericImplementationTypes ?? EnumerableHelper<Type>.ReadOnlyArray) ?? false));
         }
 
-        /// <inheritdoc />
-        public bool Equals(MethodInfo? other)
+        /// <summary>
+        /// Determines whether this definition describes the specified <paramref name="other"/> method.
+        /// </summary>
+        /// <remarks>
+        ///     Not part of the equality contract (<see cref="Equals(object?)"/>) to keep it symmetric.
+        /// </remarks>
+        public bool Matches(MethodInfo? other)
         {
             if (other is null)
                 return false;
@@ -124,10 +128,6 @@ namespace Democrite.Framework.Core.Abstractions.Models
         {
             if (obj is CallMethodDefinition def)
                 return Equals(def);
-
-            //TO-DO from Opus 5.5 Asymmetric Equals with MethodInfo : Equals(object) returns true for a MethodInfo while MethodInfo.Equals never returns true back and hash codes differ, breaking symmetry and hash contracts. Keep Equals(object) for CallMethodDefinition only and expose a separate Matches(MethodInfo).
-            if (obj is MethodInfo info)
-                return Equals(info);
 
             return false;
         }

@@ -18,8 +18,6 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
     using Democrite.UnitTests.ToolKit;
     using Democrite.UnitTests.ToolKit.VGrains.Transformers;
 
-    using Moq;
-
     using NFluent;
 
     using NSubstitute;
@@ -84,51 +82,53 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
             var resultInputs = inputs.ToDictionary(k => k, _ => Guid.NewGuid().ToString());
 
             IReadOnlyCollection<ISequenceExecutorExecThread>? testInnerThreads = null;
-            var testMockInnerThreads = new List<Mock<ISequenceExecutorExecThread>>();
+            var testMockInnerThreads = new List<ISequenceExecutorExecThread>();
 
             var diagnosticLogs = new List<IExecutionContextChangeDiagnosticLog>();
 
-            var mockDiagnositicLogger = new Mock<IDiagnosticLogger>(MockBehavior.Strict);
-            var mockVGrain = new Mock<ITestExtractEmailTransformer>(MockBehavior.Strict);
-            var mockVGrainProvider = new Mock<IVGrainProvider>(MockBehavior.Strict);
+            var mockDiagnositicLogger = Substitute.For<IDiagnosticLogger>();
+            var mockVGrain = Substitute.For<ITestExtractEmailTransformer>();
+            var mockVGrainProvider = Substitute.For<IVGrainProvider>();
             var democriteSerializerMock = Substitute.For<IDemocriteSerializer>();
             var timeManagerMock = Substitute.For<ITimeManager>();
 
-            var mockSecureToken = new Mock<ISecureContextToken<ISequenceExecutorThreadHandler>>(MockBehavior.Strict);
-            var mockThreadHandler = new Mock<ISequenceExecutorThreadHandler>(MockBehavior.Strict);
+            var mockSecureToken = Substitute.For<ISecureContextToken<ISequenceExecutorThreadHandler>>();
+            var mockThreadHandler = Substitute.For<ISequenceExecutorThreadHandler>();
 
-            mockSecureToken.SetupGet(e => e.Token).Returns(mockThreadHandler.Object);
-            mockSecureToken.Setup(m => m.Dispose());
+            mockSecureToken.Token.Returns(mockThreadHandler);
 
             Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>? postCallback = null;
 
             // Diagnositic Logger
 
-            mockDiagnositicLogger.Setup(m => m.Log(It.IsAny<IExecutionContextChangeDiagnosticLog>()))
-                                 .Callback<IExecutionContextChangeDiagnosticLog>((log) => diagnosticLogs.Add(log));
+            mockDiagnositicLogger.When(m => m.Log(Arg.Any<IExecutionContextChangeDiagnosticLog>()))
+                                 .Do(ci => diagnosticLogs.Add(ci.ArgAt<IExecutionContextChangeDiagnosticLog>(0)));
 
             // Secure mockInnerThread Tken Mock
-            mockThreadHandler.Setup(m => m.RegisterPostProcess(It.IsAny<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>()))
-                             .Callback<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>(postAction => postCallback = postAction);
+            mockThreadHandler.When(m => m.RegisterPostProcess(Arg.Any<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>()))
+                             .Do(ci => postCallback = ci.ArgAt<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>(0));
 
-            mockThreadHandler.Setup(m => m.CreateInnerThread(It.IsAny<SequenceExecutorExecThreadState>(), innerDef, It.IsAny<IExecutionContext>()))
-                             .Returns<SequenceExecutorExecThreadState, SequenceDefinition, IExecutionContext>((state, def, sourceCtx) =>
+            mockThreadHandler.CreateInnerThread(Arg.Any<SequenceExecutorExecThreadState>(), innerDef, Arg.Any<IExecutionContext>())
+                             .Returns(ci =>
                              {
-                                 var mockInnerThread = new Mock<ISequenceExecutorExecThread>(MockBehavior.Strict);
+                                 var state = ci.ArgAt<SequenceExecutorExecThreadState>(0);
+
+                                 var mockInnerThread = Substitute.For<ISequenceExecutorExecThread>();
                                  var innerCtx = new Democrite.Framework.Core.Models.ExecutionContext(state.FlowUid, state.CurrentStageExecId, state.ParentStageExecId);
 
-                                 mockInnerThread.SetupGet(m => m.ExecutionContext).Returns(innerCtx);
+                                 mockInnerThread.ExecutionContext.Returns(innerCtx);
 
                                  testMockInnerThreads.Add(mockInnerThread);
 
-                                 return mockInnerThread.Object;
+                                 return mockInnerThread;
                              });
 
-            mockThreadHandler.SetupGet(p => p.HasInnerThreads).Returns(false);
+            mockThreadHandler.HasInnerThreads.Returns(false);
 
-            mockThreadHandler.Setup(m => m.SetInnerThreads(It.IsAny<IReadOnlyCollection<ISequenceExecutorExecThread>>()))
-                             .Callback<IReadOnlyCollection<ISequenceExecutorExecThread>>(threads =>
+            mockThreadHandler.When(m => m.SetInnerThreads(Arg.Any<IReadOnlyCollection<ISequenceExecutorExecThread>>()))
+                             .Do(ci =>
                              {
+                                 var threads = ci.ArgAt<IReadOnlyCollection<ISequenceExecutorExecThread>>(0);
                                  Check.That(threads).IsNotNull().And.CountIs(inputs.Length);
                                  testInnerThreads = threads;
                              });
@@ -140,7 +140,7 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
                                                             null,
                                                             inputs);
 
-            mockThreadHandler.Setup(p => p.GetCurrentDoneThreadState()).Returns(state);
+            mockThreadHandler.GetCurrentDoneThreadState().Returns(state);
 
             // Act
             //var foreachExecutor = foreachExecutor.Provide(foreachDefinition);
@@ -151,9 +151,9 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
                                                          inputs,
                                                          execContext,
                                                          logger,
-                                                         mockDiagnositicLogger.Object,
-                                                         mockVGrainProvider.Object,
-                                                         () => mockSecureToken.Object);
+                                                         mockDiagnositicLogger,
+                                                         mockVGrainProvider,
+                                                         () => mockSecureToken);
 
             Check.That(result.expectedResultType).IsNull();
             Check.That(result.result).IsNotNull().And.WhichMember(r => r.IsCompleted).Verifies(c => c.IsTrue());
@@ -162,55 +162,53 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
 
             // Check
 
-            mockThreadHandler.Verify(m => m.RegisterPostProcess(It.IsAny<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>()), Times.Once);
-            mockThreadHandler.Verify(m => m.CreateInnerThread(It.IsAny<SequenceExecutorExecThreadState>(), innerDef, It.IsAny<IExecutionContext>()), Times.Exactly(inputs.Length));
-            mockThreadHandler.Verify(m => m.SetInnerThreads(It.IsAny<IReadOnlyCollection<ISequenceExecutorExecThread>>()), Times.Once);
+            mockThreadHandler.Received(1).RegisterPostProcess(Arg.Any<Func<SequenceStageDefinition, Func<ISecureContextToken<ISequenceExecutorThreadHandler>>, Task<StageStepResult>>>());
+            mockThreadHandler.Received(inputs.Length).CreateInnerThread(Arg.Any<SequenceExecutorExecThreadState>(), innerDef, Arg.Any<IExecutionContext>());
+            mockThreadHandler.Received(1).SetInnerThreads(Arg.Any<IReadOnlyCollection<ISequenceExecutorExecThread>>());
 
             Check.That(testInnerThreads).IsNotNull().And.CountIs(inputs.Length);
 
-            mockThreadHandler.Invocations.Clear();
+            mockThreadHandler.ClearReceivedCalls();
 
             Check.That(postCallback).IsNotNull();
 
-            // Change Test Values 
+            // Change Test Values
 
-            mockThreadHandler.SetupGet(p => p.HasInnerThreads).Returns(true);
-            mockThreadHandler.SetupGet(p => p.AllInnerThreadsJobDone).Returns(true);
+            mockThreadHandler.HasInnerThreads.Returns(true);
+            mockThreadHandler.AllInnerThreadsJobDone.Returns(true);
 
             Debug.Assert(testInnerThreads != null);
-            mockThreadHandler.Setup(m => m.PullInnerThreads(true)).Returns(testInnerThreads);
+            mockThreadHandler.PullInnerThreads(true).Returns(testInnerThreads);
 
             foreach (var inner in testMockInnerThreads)
             {
-                inner.Setup(i => i.GetSecurityThreadHandler())
-                     .Returns(() =>
+                inner.GetSecurityThreadHandler()
+                     .Returns(_ =>
                      {
-                         var innerMockSecureToken = new Mock<ISecureContextToken<ISequenceExecutorThreadHandler>>(MockBehavior.Strict);
-                         var innerThreadHandler = new Mock<ISequenceExecutorThreadHandler>(MockBehavior.Strict);
+                         var innerMockSecureToken = Substitute.For<ISecureContextToken<ISequenceExecutorThreadHandler>>();
+                         var innerThreadHandler = Substitute.For<ISequenceExecutorThreadHandler>();
 
-                         innerMockSecureToken.SetupGet(i => i.Token).Returns(innerThreadHandler.Object);
+                         innerMockSecureToken.Token.Returns(innerThreadHandler);
 
-                         var innerState = new SequenceExecutorExecThreadState(inner.Object.ExecutionContext.FlowUID,
+                         var innerState = new SequenceExecutorExecThreadState(inner.ExecutionContext.FlowUID,
                                                                               Guid.NewGuid(),
-                                                                              inner.Object.ExecutionContext.CurrentExecutionId,
-                                                                              inner.Object.ExecutionContext.ParentExecutionId,
+                                                                              inner.ExecutionContext.CurrentExecutionId,
+                                                                              inner.ExecutionContext.ParentExecutionId,
                                                                               null,
                                                                               null);
 
                          innerState.SetJobIsDone(new[] { Guid.NewGuid().ToString() });
 
-                         innerThreadHandler.Setup(m => m.GetCurrentDoneThreadState())
+                         innerThreadHandler.GetCurrentDoneThreadState()
                                            .Returns(innerState);
 
-                         innerMockSecureToken.Setup(m => m.Dispose());
-
-                         return innerMockSecureToken.Object;
+                         return innerMockSecureToken;
                      });
             }
 
             // Act post process
 
-            var postbackResults = await postCallback!(foreachDefinition, () => mockSecureToken.Object);
+            var postbackResults = await postCallback!(foreachDefinition, () => mockSecureToken);
 
             // Check
             Check.That(postbackResults.expectedResultType).IsNotNull().And.IsEqualTo(typeof(string[][]));
@@ -227,6 +225,10 @@ namespace Democrite.Framework.Node.UnitTests.ThreadExecutors
                                   .ContainsOnlyElementsThatMatch(r => r.Length == 1 &&
                                                                       !string.IsNullOrEmpty(r.First()) &&
                                                                       Guid.TryParse(r.First(), out _));
+
+            // Strict behavior: only expected calls are allowed
+            Check.That(mockDiagnositicLogger.ReceivedCalls()).CountIs(diagnosticLogs.Count);
+            Check.That(mockVGrainProvider.ReceivedCalls()).IsEmpty();
         }
     }
 }

@@ -183,6 +183,66 @@ namespace Democrite.Toolbox.WPF
         }
 
         /// <summary>
+        /// Disposes all resources synchronously, without blocking on asynchronous disposal.
+        /// </summary>
+        /// <remarks>
+        ///     <see cref="IDisposable"/> resources are disposed synchronously on the calling thread.
+        ///     Resources only <see cref="IAsyncDisposable"/> are started on the calling thread and NOT awaited
+        ///     to prevent dead lock when called from the dispatcher thread; their failures are reported through <see cref="IDispatcherProxy.Throw"/>.
+        /// </remarks>
+        protected void DisposeAllResources()
+        {
+            var resources = this._resources.GetContainerCopy();
+
+            this._resources.Clear();
+            this._linkViewModels.Clear();
+
+            List<Exception>? exceptions = null;
+
+            foreach (var resource in resources)
+            {
+                if (resource is IDisposable disposable)
+                {
+                    try
+                    {
+                        disposable.Dispose();
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        exceptions ??= new List<Exception>();
+                        exceptions.Add(ex);
+                    }
+                }
+
+                if (resource is IAsyncDisposable asyncDisposable)
+                {
+                    try
+                    {
+                        var pending = asyncDisposable.DisposeAsync();
+                        if (pending.IsCompletedSuccessfully)
+                            continue;
+
+                        var dispatcherProxy = this.DispatcherProxy;
+                        pending.AsTask().ContinueWith(t => dispatcherProxy.Throw(new AggregateException(t.Exception!.InnerExceptions)),
+                                                      CancellationToken.None,
+                                                      TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                                                      TaskScheduler.Default);
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        exceptions ??= new List<Exception>();
+                        exceptions.Add(ex);
+                    }
+                }
+            }
+
+            if (exceptions is not null && exceptions.Count > 0)
+                this.DispatcherProxy.Throw(new AggregateException(exceptions));
+        }
+
+        /// <summary>
         /// Registers a resource attached to this view model instances.
         /// </summary>
         /// <remarks>

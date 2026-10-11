@@ -55,7 +55,7 @@ namespace Democrite.Framework.Node.ThreadExecutors
             using (var token = securityThreadHandlerAccessor())
             {
                 // set post process to aggregate result
-                token.Token.RegisterPostProcess(ForeachSequenceStagePostProcess);
+                token.Token.RegisterPostProcess((def, accessor) => ForeachSequenceStagePostProcess(def, accessor, logger));
 
                 // Get inner thread by input element
                 if (!token.Token.HasInnerThreads && input is System.Collections.IEnumerable collection)
@@ -101,7 +101,8 @@ namespace Democrite.Framework.Node.ThreadExecutors
         ///     All post process are execute
         /// </remarks>
         private Task<StageStepResult> ForeachSequenceStagePostProcess(SequenceStageDefinition sequenceStageDefinition,
-                                                                      Func<ISecureContextToken<ISequenceExecutorThreadHandler>> securityThreadHandlerAccessor)
+                                                                      Func<ISecureContextToken<ISequenceExecutorThreadHandler>> securityThreadHandlerAccessor,
+                                                                      ILogger logger)
         {
             using (var handlerSafeToken = securityThreadHandlerAccessor())
             {
@@ -125,6 +126,21 @@ namespace Democrite.Framework.Node.ThreadExecutors
                                                                     .ToArray();
 
                             throw new AggregateException(aggreException);
+                        }
+
+                        // Partial failures : failed items are excluded from the result, at least report them
+                        var partialFailures = foreachIndexedState.Where(f => f.Value?.Exception != null)
+                                                                 .Select(e => e.Value.Exception!)
+                                                                 .ToArray();
+
+                        if (partialFailures.Length > 0)
+                        {
+                            logger.OptiLog(LogLevel.Error,
+                                           "Foreach stage {stageUid} : {failedCount}/{totalCount} inner executions failed, their results are excluded : {exception}",
+                                           sequenceStageDefinition?.Uid,
+                                           partialFailures.Length,
+                                           foreachIndexedState.Count,
+                                           new AggregateException(partialFailures));
                         }
 
                         ArgumentNullException.ThrowIfNull(sequenceStageDefinition);

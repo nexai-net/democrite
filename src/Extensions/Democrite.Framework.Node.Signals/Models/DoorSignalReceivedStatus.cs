@@ -137,9 +137,8 @@ namespace Democrite.Framework.Node.Signals.Models
         /// </summary>
         internal bool ClearHistory(in uint maxRetention)
         {
-            //TO-DO from Opus 5.5 ClearHistory keeps oldest instead of newest : Ordering ascending then Skip(maxRetention) removes the most recent entries and keeps the oldest, which contradicts the documented 'retain only maxRetention recent'. Use SkipLast((int)maxRetention) as ClearNotConsumed does, or order descending.
             var toRemovedNotConsumed = this._signalsReceivedHistory.OrderBy(k => k.SendUtcTime)
-                                                                   .Skip((int)maxRetention)
+                                                                   .SkipLast((int)maxRetention)
                                                                    .ToArray();
 
             foreach (var node in toRemovedNotConsumed)

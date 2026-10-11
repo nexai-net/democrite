@@ -21,6 +21,7 @@
     using System.Diagnostics;
     using System.Formats.Tar;
     using System.Text;
+    using System.Text.RegularExpressions;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -32,6 +33,10 @@
         #region Fields
 
         private static readonly string s_template;
+
+        // [registry[:port]/]name[/name...][@digest]
+        private static readonly Regex s_imageNameValidator = new Regex("^[A-Za-z0-9][A-Za-z0-9._\\-/:@]*$", RegexOptions.Compiled);
+        private static readonly Regex s_imageTagValidator = new Regex("^[A-Za-z0-9_][A-Za-z0-9_.\\-]{0,127}$", RegexOptions.Compiled);
         private readonly IConfiguration _configuration;
         private readonly IProcessSystemService _processSystemService;
         private readonly IJsonSerializer _jsonSerializer;
@@ -107,7 +112,7 @@
 
             if (definition.AllowPersistence)
             {
-                executor = new ExternalDockerCodeDeamonExecutor(definition,
+                executor = new ExternalDockerCodeDaemonExecutor(definition,
                                                                 this._processSystemService,
                                                                 this._jsonSerializer,
                                                                 this._networkInspector,
@@ -245,13 +250,14 @@
 
             var files = new List<Uri>();
 
-            //TO-DO from Opus 5.5 Dockerfile instruction injection via file names : Package file names, env.Image/Tag and ExtraDockerFileInstructions are concatenated into the Dockerfile without validation, so a name containing a quote or newline injects arbitrary RUN instructions into the image build. Validate and escape file names (reject quotes and newlines, use relative paths) and validate the image reference format.
             foreach (var f in definition.PackageFiles)
             {
+                var dockerPath = ToSafeDockerfilePath(f, definition);
+
                 copyDockerfileBuilder.Append("COPY [\"");
-                copyDockerfileBuilder.Append(f);
+                copyDockerfileBuilder.Append(dockerPath);
                 copyDockerfileBuilder.Append("\", \"");
-                copyDockerfileBuilder.Append(f);
+                copyDockerfileBuilder.Append(dockerPath);
                 copyDockerfileBuilder.AppendLine("\"]");
 
                 files.Add(new Uri(rootPath, f));
@@ -259,9 +265,29 @@
 
             await InstallInLocalAsync(definition, rootPath, files, logger, null, token);
 
-            return s_template.Replace("<<PARENT_IMAGE>>", env.Image + ":" + (env.Tag ?? "latest"))
+            if (string.IsNullOrEmpty(env.Image) || !s_imageNameValidator.IsMatch(env.Image))
+                throw new InvalidDataException("[Artifact:" + definition.Uid + "] Invalid docker image name '" + env.Image + "'");
+
+            if (!string.IsNullOrEmpty(env.Tag) && !s_imageTagValidator.IsMatch(env.Tag))
+                throw new InvalidDataException("[Artifact:" + definition.Uid + "] Invalid docker image tag '" + env.Tag + "'");
+
+            // ExtraDockerFileInstructions are by design raw dockerfile instructions provided by the artifact definition author
+            return s_template.Replace("<<PARENT_IMAGE>>", env.Image + ":" + (string.IsNullOrEmpty(env.Tag) ? "latest" : env.Tag))
                              .Replace("<<COPY_FILES>>", copyDockerfileBuilder.ToString())
                              .Replace("<<EXTR_BUILD_INSTRUCTION>>", string.Join(Environment.NewLine, env.ExtraDockerFileInstructions));
+        }
+
+        /// <summary>
+        /// Validate a package file path before inserting it in a dockerfile JSON-array instruction
+        /// (forbid characters able to escape the json string or the dockerfile line)
+        /// </summary>
+        private static string ToSafeDockerfilePath(string file, ArtifactExecutableDefinition definition)
+        {
+            if (string.IsNullOrWhiteSpace(file) || file.Any(c => c == '"' || char.IsControl(c)))
+                throw new InvalidDataException("[Artifact:" + definition.Uid + "] Invalid package file name '" + file?.ReplaceLineEndings(" ") + "'");
+
+            // Docker build context paths use '/' as separator; a '\\' would be interpreted as a json escape sequence
+            return file.Replace('\\', '/');
         }
 
         #endregion

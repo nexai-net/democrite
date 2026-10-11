@@ -4,6 +4,7 @@
     using Democrite.Toolbox.WPF.Abstractions.Navigations;
     using Democrite.Toolbox.WPF.Abstractions.Views;
     using Democrite.Toolbox.WPF.Services;
+    using Democrite.Toolbox.WPF.UI.Controls;
 
     using Microsoft.Extensions.DependencyInjection;
 
@@ -63,6 +64,13 @@
                 var windowVM = viewModelBuilder();
                 inst.DataContext = windowVM;
 
+                // View model lifetime is managed by the view manager (persistence rules)
+                if (inst is WindowExt windowExt)
+                    windowExt.DisposeDataContextOnClosed = false;
+
+                inst.Closed -= Window_Closed;
+                inst.Closed += Window_Closed;
+
                 if (dialog)
                     inst.ShowDialog();
                 else
@@ -72,6 +80,18 @@
             }
 
             return OnDisplay(viewModelBuilder, relation, dialog, arguments, specializedId);
+        }
+
+        /// <summary>
+        /// Release the window view model following the persistence rules
+        /// </summary>
+        private void Window_Closed(object? sender, EventArgs e)
+        {
+            if (sender is Window window)
+            {
+                window.Closed -= Window_Closed;
+                base.ViewClosed(window.DataContext);
+            }
         }
 
         /// <inheritdoc cref="Display(Func{object?}, ViewRelation, bool, NavigationArguments?, string?)" />

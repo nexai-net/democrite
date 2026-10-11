@@ -48,7 +48,7 @@
                                            .CompileAsync();
 
             // Python config withouts helper
-            var noResultDef = await Artifact.VGrain("demonCalc", uid: new Guid("3D7B54EE-8A77-42B5-AE84-C7CD091A0AF2"))
+            var noResultDef = await Artifact.VGrain("no-result-calc", "NoResultCalc", uid: new Guid("3D7B54EE-8A77-42B5-AE84-C7CD091A0AF2"))
                                             .ExecuteBy("Python", new Version("3.12.1"))
                                             .From("./Scripts", ArtifactPackageTypeEnum.Directory, (string?)null)
                                             .ExecuteFile("NoResult/NoResultCompute.py")

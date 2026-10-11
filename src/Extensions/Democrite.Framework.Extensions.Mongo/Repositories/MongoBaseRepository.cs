@@ -265,8 +265,7 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
                                                                     new ReplaceOptions() { IsUpsert = insertIfNew },
                                                                     token);
 
-            //TO-DO from Opus 5.5 Push returns false for unchanged documents : ModifiedCount is 0 when the replacement is identical to the stored document, so a successful push reports failure. Use MatchedCount == 1 || UpsertedId != null.
-            return (result?.ModifiedCount ?? 0) == 1 || result?.UpsertedId is not null;
+            return (result?.MatchedCount ?? 0) == 1 || result?.UpsertedId is not null;
         }
 
         /// <inheritdoc />
@@ -275,14 +274,19 @@ namespace Democrite.Framework.Extensions.Mongo.Repositories
             CheckReadOnly();
             await EnsureInitialized(token);
 
-            //TO-DO from Opus 5.5 Bulk push ignores insertIfNew and miscounts : The bulk ReplaceOneModel never sets IsUpsert = insertIfNew, so new entities are silently not inserted. The returned count also uses InsertedCount, which is always 0 for replace models. Set IsUpsert on each model and return MatchedCount + Upserts.Count.
-            var bulkInsert = entities.Select(e => new ReplaceOneModel<TEntity>(Builders<TEntity>.Filter.Eq(exist => exist.Uid, e.Uid), e))
+            var bulkInsert = entities.Select(e => new ReplaceOneModel<TEntity>(Builders<TEntity>.Filter.Eq(exist => exist.Uid, e.Uid), e) { IsUpsert = insertIfNew })
                                      .OfType<WriteModel<TEntity>>()
                                      .ToArray();
 
+            if (bulkInsert.Length == 0)
+                return 0;
+
             var result = await this.MongoCollection.BulkWriteAsync(bulkInsert, cancellationToken: token);
 
-            return (int)((result?.ModifiedCount ?? 0) + (result?.InsertedCount ?? 0));
+            if (result is null || !result.IsAcknowledged)
+                return 0;
+
+            return (int)(result.MatchedCount + result.Upserts.Count);
         }
 
         /// <inheritdoc />

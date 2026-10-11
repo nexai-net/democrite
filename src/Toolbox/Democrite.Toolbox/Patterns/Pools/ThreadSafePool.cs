@@ -30,8 +30,7 @@ namespace Democrite.Toolbox.Patterns.Pools
         /// </summary>
         static ThreadSafePool()
         {
-            //TO-DO from Opus 5.5 ThreadSafePool.Default is not thread-safe : The static Default is typed and built as the non-thread-safe Pool<TItem>, so callers of ThreadSafePool<T>.Default share an unsynchronized Queue. Make the property a ThreadSafePool<TItem> and build it with new ThreadSafePool<TItem>(...).
-            Default = new Pool<TItem>(20_000, 50);
+            Default = new ThreadSafePool<TItem>(20_000, 50);
         }
 
         /// <summary>
@@ -58,7 +57,7 @@ namespace Democrite.Toolbox.Patterns.Pools
         /// <summary>
         /// Gets the default.
         /// </summary>
-        public static Pool<TItem> Default { get; }
+        public static ThreadSafePool<TItem> Default { get; }
 
         #endregion
 

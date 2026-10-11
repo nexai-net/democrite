@@ -11,6 +11,7 @@ namespace Democrite.Framework.Extensions.Mongo.Models
     using MongoDB.Driver;
 
     using System.Diagnostics.CodeAnalysis;
+    using System.Text.RegularExpressions;
 
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
     internal sealed class GrainStateContainer<TState> : IEntityWithId<string>, IContainerWithDiscriminator<GrainStateContainer<TState>>
@@ -31,8 +32,12 @@ namespace Democrite.Framework.Extensions.Mongo.Models
             var traits = typeof(TState);
 
             if (traits.IsInterface == false && traits.IsAbstract == false)
-                //TO-DO from Opus 5.5 Discriminator regex unescaped and over-matching : The '.' characters are regex wildcards and ',*' means 'zero or more commas', so '^Ns.Foo,*' also matches 'Ns.FooBar' and other states share the filter (generic and nested names also break it). Escape the name with Regex.Escape and anchor it precisely (for example '(,|$)').
-                s_discriminator = Builders<GrainStateContainer<TState>>.Filter.Regex(new StringFieldDefinition<GrainStateContainer<TState>>("_doc._t"), new BsonRegularExpression("^" + traits.Namespace + "." + traits.Name + ",*"));
+            {
+                // Discriminator stored is the AssemblyQualifiedName : '<FullName>, <Assembly>, ...'
+                var fullName = traits.FullName ?? (traits.Namespace + "." + traits.Name);
+                s_discriminator = Builders<GrainStateContainer<TState>>.Filter.Regex(new StringFieldDefinition<GrainStateContainer<TState>>("_doc._t"),
+                                                                                     new BsonRegularExpression("^" + Regex.Escape(fullName) + "(,|$)"));
+            }
         }
 
         #endregion

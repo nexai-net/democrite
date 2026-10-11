@@ -233,16 +233,23 @@ namespace Democrite.Framework.Extensions.Mongo.Services
             this._cacheLock.EnterWriteLock();
             try
             {
+                var changed = new List<Guid>();
+
                 foreach (var container in containers)
                 {
-                    //TO-DO from Opus 5.5 Changed definitions never evicted from cache : When the Etag changes, the entry is removed only from _cachedContainer, not from the base provider cache, and toRemove is computed afterwards so it no longer includes this key. Stale definitions are therefore served forever. Add the changed Uids to the list passed to base.SafeRemoves.
                     if (this._cachedContainer.TryGetValue(container.Uid, out var oldContainer) && oldContainer.Etag != container.Etag)
-                        this._cachedContainer.Remove(container.Uid);
+                        changed.Add(container.Uid);
                 }
 
+                // Evict definitions that changed or no longer exist in the source
                 var toRemove = this._cachedContainer.Keys
                                                     .Except(containers.Select(c => c.Uid))
+                                                    .Concat(changed)
+                                                    .Distinct()
                                                     .ToArray();
+
+                foreach (var uid in toRemove)
+                    this._cachedContainer.Remove(uid);
 
                 base.SafeRemoves(toRemove);
             }

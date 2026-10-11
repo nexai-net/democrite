@@ -34,14 +34,8 @@ namespace Democrite.Toolbox.Disposables
             this._disposableDependencies = new SafeContainer<IDisposable>();
         }
 
-        /// <summary>
-        /// Finalizes an instance of the <see cref="SafeDisposable"/> class.
-        /// </summary>
-        ~SafeAsyncDisposable()
-        {
-            //TO-DO from Opus 5.5 Finalizer blocks up to 10s on async dispose : Blocking the single finalizer thread on async work stalls finalization for the whole process, and DisposeBeginAsync overrides touch managed objects that may already be finalized. Remove the finalizer, or limit it to releasing unmanaged resources synchronously.
-            Task.Run(async () => await DisposeAsync(false)).Wait(10000);
-        }
+        // No finalizer: blocking the finalizer thread on async dispose stalls the whole process finalization
+        // and the dispose chain touches managed objects that may already be finalized.
 
         #endregion
 

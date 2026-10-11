@@ -40,8 +40,27 @@ namespace Democrite.Toolbox.WPF
         /// </summary>
         ~AsyncDisposableBaseViewModel()
         {
-            //TO-DO from Opus 5.5 Finalizer blocks on async disposal : The finalizer blocks the single GC finalizer thread on async work and disposes managed resources (DisposeAllResourcesAsync, DisposeBeginAsync/EndAsync) that may already be finalized. One hang stalls finalization for the whole process. Remove the finalizer, or limit it to releasing unmanaged state without blocking.
-            Task.Run(() => DisposeAsync(true)).Wait();
+            // Finalizer path : only release unmanaged state, never block the finalizer thread
+            // and never touch managed resources that may already have been finalized
+            if (Interlocked.Increment(ref this._disposableCount) > 1)
+                return;
+
+            try
+            {
+                var pending = DisposeUnmanagedAsync();
+                if (pending.IsCompletedSuccessfully)
+                    return;
+
+                // Observe failure to prevent unobserved exception, never throw from a finalizer
+                pending.AsTask().ContinueWith(static t => _ = t.Exception,
+                                              CancellationToken.None,
+                                              TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                                              TaskScheduler.Default);
+            }
+            catch
+            {
+                // Never throw from a finalizer
+            }
         }
 
         #endregion

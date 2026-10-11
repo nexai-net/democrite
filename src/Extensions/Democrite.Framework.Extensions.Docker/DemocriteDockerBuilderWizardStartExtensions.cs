@@ -35,7 +35,7 @@ namespace Democrite.Framework.Configurations
         /// <summary>
         /// Adds the docker option.
         /// </summary>
-        public static IDemocriteNodeWizard AddDockerOption(this IDemocriteNodeWizard wizard, DockerEnvironementOptions option)
+        public static IDemocriteNodeWizard AddDockerOption(this IDemocriteNodeWizard wizard, DockerEnvironmentOptions option)
         {
             wizard.AddNodeOption(option);
             return wizard;
@@ -46,7 +46,7 @@ namespace Democrite.Framework.Configurations
         /// </summary>
         public static IDemocriteNodeWizard AddDockerOption(this IDemocriteNodeWizard wizard, string optionSectionPath)
         {
-            wizard.AddNodeOption<DockerEnvironementOptions>(optionSectionPath);
+            wizard.AddNodeOption<DockerEnvironmentOptions>(optionSectionPath);
             return wizard;
         }
 

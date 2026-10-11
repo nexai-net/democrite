@@ -12,7 +12,6 @@ namespace Democrite.Framework.Core.Abstractions
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
 
-    using System.Collections.Concurrent;
     using System.Linq;
 
     public static class DefinitionExtensions
@@ -20,7 +19,6 @@ namespace Democrite.Framework.Core.Abstractions
         #region Fields
 
         private static readonly IOptionsMonitor<LoggerFilterOptions> s_filterOption;
-        private static readonly ConcurrentQueue<InMemoryLogger> s_loggerPool;
 
         #endregion
 
@@ -32,7 +30,6 @@ namespace Democrite.Framework.Core.Abstractions
         static DefinitionExtensions()
         {
             s_filterOption = (new LoggerFilterOptions() { MinLevel = LogLevel.Error }).ToMonitorOption();
-            s_loggerPool = new ConcurrentQueue<InMemoryLogger>();
         }
 
         #endregion
@@ -44,42 +41,30 @@ namespace Democrite.Framework.Core.Abstractions
         /// </summary>
         public static void ValidateWithException(this IDefinition definition, ILogger? extraLogger = null)
         {
-            InMemoryLogger? logger = null;
-            try
+            // InMemoryLogger could not be reset, a new one is created per call to avoid mixing logs between validations
+            var logger = new InMemoryLogger(s_filterOption);
+
+            if (!definition.Validate(logger))
             {
-                if (!s_loggerPool.TryDequeue(out logger))
+                var logs = logger.GetLogsCopy();
+
+                List<Exception>? errors = null;
+
+                foreach (var log in logs)
                 {
-                    logger = new InMemoryLogger(s_filterOption);
-                }
+                    extraLogger?.OptiLog(log.LogLevel, log.Message);
 
-                if (!definition.Validate(logger))
-                {
-                    var logs = logger.GetLogsCopy();
-
-                    List<Exception>? errors = null;
-
-                    foreach (var log in logs)
+                    if (log.LogLevel >= LogLevel.Error)
                     {
-                        extraLogger?.OptiLog(log.LogLevel, log.Message);
-
-                        if (log.LogLevel >= LogLevel.Error)
-                        {
-                            var ex = new DefinitionException(definition.GetType(), definition.Uid.ToString(), log.Message);
-                            if (errors is null)
-                                errors = new List<Exception>();
-                            errors.Add(ex);
-                        }
+                        var ex = new DefinitionException(definition.GetType(), definition.Uid.ToString(), log.Message);
+                        if (errors is null)
+                            errors = new List<Exception>();
+                        errors.Add(ex);
                     }
-
-                    if (errors is not null && errors.Any())
-                        throw new AggregateException(errors);
                 }
-            }
-            finally
-            {
-                //TO-DO from Opus 5.5 Pooled loggers reused without clearing : InMemoryLogger has no reset, so a pooled logger keeps all previous logs: later validations report errors from other definitions and each logger grows unboundedly. Clear the logger before re-enqueuing or create a new one per call.
-                if (logger is not null && s_loggerPool.Count < short.MaxValue)
-                    s_loggerPool.Enqueue(logger);
+
+                if (errors is not null && errors.Any())
+                    throw new AggregateException(errors);
             }
         }
 

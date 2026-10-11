@@ -80,35 +80,38 @@ namespace Democrite.Framework.Node.Blackboard.Builders.Templates
         /// <inheritdoc />
         public IBlackboardTemplateStorageControllerBuilder Storage
         {
-            get
-            {
-                //TO-DO from Opus 5.5 Property getter resets controller configuration : Reading Storage, Event or State replaces the registered builder with a fresh one that has no controller, so a read without UseController (even from a debugger) makes Build() throw ArgumentNullException. Expose these as methods, or reuse the existing builder.
-                var storageControllerBuilder = new BlackboardTemplateStorageControllerBuilder(this);
-                this._storageControllers[BlackboardControllerTypeEnum.Storage] = storageControllerBuilder;
-                return storageControllerBuilder;
-            }
+            get { return GetOrCreateControllerBuilder(BlackboardControllerTypeEnum.Storage, r => new BlackboardTemplateStorageControllerBuilder(r)); }
         }
 
         /// <inheritdoc />
         public IBlackboardTemplateEventControllerBuilder Event
         {
-            get
-            {
-                var eventControllerBuilder = new BlackboardTemplateEventControllerBuilder(this);
-                this._storageControllers[BlackboardControllerTypeEnum.Event] = eventControllerBuilder;
-                return eventControllerBuilder;
-            }
+            get { return GetOrCreateControllerBuilder(BlackboardControllerTypeEnum.Event, r => new BlackboardTemplateEventControllerBuilder(r)); }
         }
 
         /// <inheritdoc />
         public IBlackboardTemplateStateControllerBuilder State
         {
-            get
-            {
-                var stateControllerBuilder = new BlackboardTemplateStateControllerBuilder(this);
-                this._storageControllers[BlackboardControllerTypeEnum.State] = stateControllerBuilder;
-                return stateControllerBuilder;
-            }
+            get { return GetOrCreateControllerBuilder(BlackboardControllerTypeEnum.State, r => new BlackboardTemplateStateControllerBuilder(r)); }
+        }
+
+        #endregion
+
+        #region Tools
+
+        /// <summary>
+        /// Gets the dedicated controller builder already registered for <paramref name="type"/>; otherwise create and register a new one.
+        /// Reading the property multiple times doesn't reset the configuration already done.
+        /// </summary>
+        private TBuilder GetOrCreateControllerBuilder<TBuilder>(BlackboardControllerTypeEnum type, Func<BlackboardTemplateBuilder, TBuilder> factory)
+            where TBuilder : class, IDefinitionBaseBuilder<BlackboardTemplateControllerDefinition>
+        {
+            if (this._storageControllers.TryGetValue(type, out var existing) && existing is TBuilder existingBuilder)
+                return existingBuilder;
+
+            var builder = factory(this);
+            this._storageControllers[type] = builder;
+            return builder;
         }
 
         #endregion
@@ -180,8 +183,16 @@ namespace Democrite.Framework.Node.Blackboard.Builders.Templates
         /// <inheritdoc />
         public IBlackboardTemplateFinalizerBuilder AnyLogicalTypeConfiguration(Action<ILogicalTypeConfiguration>? cfg = null)
         {
-            //TO-DO from Opus 5.5 AnyLogicalTypeConfiguration ignores its cfg callback : The `cfg` delegate is never invoked, so rules configured for the catch-all logical type are silently discarded. Build a LogicalTypeConfiguration(".*"), invoke cfg on it and add its rules.
             this._anyLogicalType = true;
+
+            if (cfg is not null)
+            {
+                // Missing default order and storage rules for ".*" are completed in Build()
+                var config = new LogicalTypeConfiguration(".*");
+                cfg(config);
+                this._logicalTypeDefinitions.AddRange(config.GenerateRules());
+            }
+
             return this;
         }
 

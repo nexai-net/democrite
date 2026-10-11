@@ -62,8 +62,18 @@ namespace Democrite.Framework.Builders.Sequences
         /// Initializes a new instance of the <see cref="SequenceBuilder"/> class link to a parent one
         /// </summary>
         internal SequenceBuilder(SequenceBuilder parent, string displayName)
-            //TO-DO from Opus 5.5 Sub-sequence reuses parent SNI/RefId : CreateSubSequence (used by Foreach) builds the inner SequenceDefinition with the parent's simple name and namespace, so the parent and its sub-sequences share the same RefId. Reference resolution then becomes ambiguous. Derive a unique SNI, for example parentSni + "-" + suffix or uid.
-            : this(Guid.NewGuid(), parent._simpleNameIdentifier, displayName, parent._options, parent._definitionMetaData)
+            : this(parent, displayName, Guid.NewGuid())
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SequenceBuilder"/> class link to a parent one
+        /// </summary>
+        /// <remarks>
+        ///     The sub sequence simple name identifier is derived from the parent's one to get a unique RefId
+        /// </remarks>
+        private SequenceBuilder(SequenceBuilder parent, string displayName, Guid uid)
+            : this(uid, parent._simpleNameIdentifier + "-sub-" + uid.ToString("N"), displayName, parent._options, parent._definitionMetaData)
         {
             this._parent = parent;
         }

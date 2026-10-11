@@ -93,8 +93,7 @@ namespace Democrite.Toolbox.Abstractions.Conditions
             return call is not null &&
                    (this.Instance?.Equals(call.Instance) ?? call.Instance is null) &&
                    this.MethodName == call.MethodName &&
-                   //TO-DO from Opus 5.5 Call equality ignores argument order : Arguments are sorted by hash before comparison, so Call(a, b) equals Call(b, a) even though method arguments are positional. Items with equal hashes but different values also compare unpredictably. Use SequenceEqual on the original order and an order-sensitive hash.
-                   this.Arguments.OrderBy(a => (a?.GetHashCode() ?? 0)).SequenceEqual(call.Arguments.OrderBy(a => (a?.GetHashCode() ?? 0)));
+                   this.Arguments.SequenceEqual(call.Arguments);
         }
 
         /// <inheritdoc />
@@ -102,7 +101,7 @@ namespace Democrite.Toolbox.Abstractions.Conditions
         {
             return HashCode.Combine(this.Instance,
                                     this.MethodName,
-                                    (this.Arguments.OrderBy(a => (a?.GetHashCode() ?? 0)).Aggregate(0, (acc, a) => acc + (a?.GetHashCode() ?? 0))));
+                                    this.Arguments.Aggregate(17, (acc, a) => unchecked((acc * 31) + (a?.GetHashCode() ?? 0))));
         }
 
         #endregion

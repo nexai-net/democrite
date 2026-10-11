@@ -7,6 +7,7 @@ namespace Democrite.Toolbox.Communications
     using Democrite.Toolbox.Disposables;
 
     using System;
+    using System.Buffers;
     using System.Net;
     using System.Net.Sockets;
     using System.Reactive.Concurrency;
@@ -28,6 +29,7 @@ namespace Democrite.Toolbox.Communications
         private readonly Subject<byte[]> _subject;
 
         private readonly IDisposable _connectObservableToken;
+        private readonly object _sendLocker = new object();
 
         #endregion
 
@@ -93,18 +95,30 @@ namespace Democrite.Toolbox.Communications
         /// </summary>
         public void Send(byte[] data)
         {
+            ArgumentNullException.ThrowIfNull(data);
+
+            // Wire format use a 2 bytes (ushort) length prefix
+            if (data.Length > ushort.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(data), data.Length, "Message payload size (" + data.Length + " bytes) exceed the maximum frame size allowed by the protocol (" + ushort.MaxValue + " bytes)");
+
+            var quantitySize = sizeof(ushort);
+            var frameSize = quantitySize + data.Length;
+            var buffer = ArrayPool<byte>.Shared.Rent(frameSize);
+
             try
             {
-                var quantitySize = sizeof(ushort);
-                //TO-DO from Opus 5.5 Unbounded stackalloc and ushort length truncation : A payload larger than 65535 bytes gets a silently truncated ushort length prefix, which corrupts the stream framing, and a large payload can overflow the stack. Concurrent Send calls can also interleave frames. Validate the size (throw above ushort.MaxValue), use an ArrayPool buffer, and serialize writes with a lock.
-                Span<byte> sizeBuffer = stackalloc byte[quantitySize + data.Length];
+                var sizeBuffer = buffer.AsSpan(0, frameSize);
 
-                var sizeArray = BitConverter.GetBytes((ushort)data.Length);
-                sizeArray.CopyTo(sizeBuffer);
+                BitConverter.TryWriteBytes(sizeBuffer, (ushort)data.Length);
                 data.CopyTo(sizeBuffer[quantitySize..]);
 
                 var stream = this._tcpClient.GetStream();
-                stream.Write(sizeBuffer);
+
+                // Prevent frame interleaving on concurrent send
+                lock (this._sendLocker)
+                {
+                    stream.Write(sizeBuffer);
+                }
             }
             catch (IOException)
             {
@@ -112,6 +126,10 @@ namespace Democrite.Toolbox.Communications
             }
             catch (Exception)
             {
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
 

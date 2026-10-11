@@ -66,7 +66,9 @@ namespace Democrite.Framework.Core.Abstractions.Doors
 
             this.RetentionMaxDelay = retentionMaxDelay;
             this.HistoryMaxRetention = historyMaxRetention;
+#pragma warning disable CS0618 // Type or member is obsolete : misspelled member kept as serialization storage
             this.NotConsumedMaxRetiention = notConsumedMaxRetiention;
+#pragma warning restore CS0618 // Type or member is obsolete
         }
 
         #endregion
@@ -126,7 +128,25 @@ namespace Democrite.Framework.Core.Abstractions.Doors
         [Id(5)]
         [DataMember]
         [Newtonsoft.Json.JsonProperty]
+        [Obsolete("Misspelled, use " + nameof(NotConsumedMaxRetention) + " instead. Kept as serialization storage for compatibility.")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public uint? NotConsumedMaxRetiention { get; }
+
+        /// <summary>
+        /// Gets quantity of message not consumed to retain; null means no limit.
+        /// </summary>
+        /// <remarks>
+        ///     Default null <see cref="DEFAULT_NOT_CONSUMED_RETENTION"/>, Min 1
+        /// </remarks>
+        [IgnoreDataMember]
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+#pragma warning disable CS0618 // Type or member is obsolete
+        public uint? NotConsumedMaxRetention
+        {
+            get { return this.NotConsumedMaxRetiention; }
+        }
+#pragma warning restore CS0618 // Type or member is obsolete
 
         /// <summary>
         /// Gets quantity of history signal to retain; null means no limit; 0 prevent any history
@@ -185,15 +205,6 @@ namespace Democrite.Framework.Core.Abstractions.Doors
                     isValid = false;
             }
 
-            //TO-DO from Opus 5.5 Duplicated validation block : The 'No signal or door are listen' check is copy-pasted twice, logging the warning twice. Remove the duplicate.
-            if (this.SignalSourceIds.Count == 0 && this.DoorSourceIds.Count == 0)
-            {
-                logger.OptiLog(warningLevel, "No signal or door are listen");
-
-                if (matchErrorAsWarning)
-                    isValid = false;
-            }
-
             if (this.HistoryMaxRetention == null && this.RetentionMaxDelay == null)
             {
                 logger.OptiLog(warningLevel, "No historical retention have been set, it will result of no automatic clean up and historical grow indefinetly");
@@ -202,7 +213,7 @@ namespace Democrite.Framework.Core.Abstractions.Doors
                     isValid = false;
             }
 
-            if (this.NotConsumedMaxRetiention == null && this.RetentionMaxDelay == null)
+            if (this.NotConsumedMaxRetention == null && this.RetentionMaxDelay == null)
             {
                 logger.OptiLog(warningLevel, "No 'not consumed' retention have been set, it will result of no automatic clean up and historical grow indefinetly");
 
@@ -224,7 +235,7 @@ namespace Democrite.Framework.Core.Abstractions.Doors
             return other is DoorDefinition otherDoor &&
                    this.DisplayName == otherDoor.DisplayName &&
                    this.VGrainInterfaceFullName == otherDoor.VGrainInterfaceFullName &&
-                   this.NotConsumedMaxRetiention == otherDoor.NotConsumedMaxRetiention &&
+                   this.NotConsumedMaxRetention == otherDoor.NotConsumedMaxRetention &&
                    this.ActiveWindowInterval == otherDoor.ActiveWindowInterval &&
                    this.RetentionMaxDelay == otherDoor.RetentionMaxDelay &&
                    this.HistoryMaxRetention == otherDoor.HistoryMaxRetention &&
@@ -248,7 +259,7 @@ namespace Democrite.Framework.Core.Abstractions.Doors
 
                                     HashCode.Combine(this.RetentionMaxDelay,
                                                      this.HistoryMaxRetention,
-                                                     this.NotConsumedMaxRetiention),
+                                                     this.NotConsumedMaxRetention),
 
                                     OnDoorGetHashCode());
         }

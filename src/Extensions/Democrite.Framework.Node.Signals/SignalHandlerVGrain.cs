@@ -67,22 +67,25 @@ namespace Democrite.Framework.Node.Signals
         [ReadOnly]
         public async Task<Guid> Fire(Guid fireId, GrainId? sourceId, VGrainMetaData? sourceMetaData, GrainCancellationToken token)
         {
-            //TO-DO from Opus 5.5 Early return skips parent signal relay : When the child signal has no direct subscribers, Fire returns before RelayToParent, so subscribers of the parent signal are never notified (the same issue is in the generic Fire<TData> at line 95). Skip only the local FireSignal call and always relay to _parentSignalHandler.
-            if (this.State is not null && this.State.HasSubscriptions == false)
-                return fireId;
+            var hasLocalSubscriptions = !(this.State is not null && this.State.HasSubscriptions == false);
 
             await EnsureInitializedAsync(token.CancellationToken);
 
-            var now = this._timeManager.UtcNow;
-            var signalSource = new SignalSource(fireId,
-                                                this._signalDefinition!.SignalId.Uid,
-                                                this._signalDefinition!.SignalId.Name ?? string.Empty,
-                                                false,
-                                                now,
-                                                sourceId,
-                                                sourceMetaData);
+            // Skip only the local fire when there is no direct subscriber, the parent signal must still be relayed
+            if (hasLocalSubscriptions)
+            {
+                var now = this._timeManager.UtcNow;
+                var signalSource = new SignalSource(fireId,
+                                                    this._signalDefinition!.SignalId.Uid,
+                                                    this._signalDefinition!.SignalId.Name ?? string.Empty,
+                                                    false,
+                                                    now,
+                                                    sourceId,
+                                                    sourceMetaData);
 
-            await Fire(signalSource);
+                await Fire(signalSource);
+            }
+
             await RelayToParent<NoneTypeStruct>(fireId, sourceId, NoneTypeStruct.Instance, sourceMetaData, token);
             return fireId;
         }
@@ -93,23 +96,27 @@ namespace Democrite.Framework.Node.Signals
         public async Task<Guid> Fire<TData>(Guid fireId, GrainId? sourceId, TData data, VGrainMetaData? sourceMetaData, GrainCancellationToken token)
             where TData : struct
         {
-            if (this.State is not null && this.State.HasSubscriptions == false)
-                return fireId;
+            var hasLocalSubscriptions = !(this.State is not null && this.State.HasSubscriptions == false);
 
             await EnsureInitializedAsync(token.CancellationToken);
 
-            var now = this._timeManager.UtcNow;
+            // Skip only the local fire when there is no direct subscriber, the parent signal must still be relayed
+            if (hasLocalSubscriptions)
+            {
+                var now = this._timeManager.UtcNow;
 
-            var signalSource = new SignalSource<TData>(fireId,
-                                                       this._signalDefinition!.SignalId.Uid,
-                                                       this._signalDefinition!.SignalId.Name ?? string.Empty,
-                                                       false,
-                                                       now,
-                                                       sourceId,
-                                                       sourceMetaData,
-                                                       data);
+                var signalSource = new SignalSource<TData>(fireId,
+                                                           this._signalDefinition!.SignalId.Uid,
+                                                           this._signalDefinition!.SignalId.Name ?? string.Empty,
+                                                           false,
+                                                           now,
+                                                           sourceId,
+                                                           sourceMetaData,
+                                                           data);
 
-            await Fire(signalSource);
+                await Fire(signalSource);
+            }
+
             await RelayToParent<TData>(fireId, sourceId, data, sourceMetaData, token);
             return fireId;
         }

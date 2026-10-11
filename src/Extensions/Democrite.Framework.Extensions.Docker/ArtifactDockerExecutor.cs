@@ -19,7 +19,7 @@ namespace Democrite.Framework.Extensions.Docker
     /// <summary>
     /// 
     /// </summary>
-    internal sealed class ExternalDockerCodeDeamonExecutor : ExternalCodeDeamonExecutor
+    internal sealed class ExternalDockerCodeDaemonExecutor : ExternalCodeDeamonExecutor
     {
         #region Fields
 
@@ -30,9 +30,9 @@ namespace Democrite.Framework.Extensions.Docker
         #region Ctor
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ExternalDockerCodeDeamonExecutor"/> class.
+        /// Initializes a new instance of the <see cref="ExternalDockerCodeDaemonExecutor"/> class.
         /// </summary>
-        public ExternalDockerCodeDeamonExecutor(ArtifactExecutableDefinition artifactExecutableDefinition,
+        public ExternalDockerCodeDaemonExecutor(ArtifactExecutableDefinition artifactExecutableDefinition,
                                                 IProcessSystemService processSystemService,
                                                 IJsonSerializer jsonSerializer,
                                                 INetworkInspector networkInspector,

@@ -139,7 +139,14 @@ namespace Democrite.Framework.Core.Services
 
             using (await this._deferredLocker.LockAsync())
             {
-                //TO-DO from Opus 5.5 Deferred status dictionary grows unbounded : Every broadcast status is stored, but entries are only removed on Cleanup when an awaiting task exists, so statuses of deferred works this client never awaits accumulate forever. Handle Cleanup regardless of _awaitingTasks, and remove completed entries once the result is delivered.
+                // Cleanup is broadcasted once the response is consumed (or the work cleaned) : always forget the work, even if never awaited by this client
+                if (statusChangeMessage.Status == DeferredStatusEnum.Cleanup)
+                {
+                    this._awaitingTasks.Remove(deferredId);
+                    this._deferredStatus.Remove(deferredId);
+                    return;
+                }
+
                 this._deferredStatus[deferredId] = statusChangeMessage;
 
                 if (this._awaitingTasks.TryGetValue(deferredId, out var pendingTask))
@@ -148,19 +155,12 @@ namespace Democrite.Framework.Core.Services
                     {
                         requiredResponse = pendingTask;
                     }
-                    else if (statusChangeMessage.Status == DeferredStatusEnum.Cleanup)
-                    {
-                        this._awaitingTasks.Remove(deferredId);
-                        this._deferredStatus.Remove(deferredId);
-                        return;
-                    }
                 }
             }
 
             if (requiredResponse is not null)
             {
-                //TO-DO from Opus 5.5 Fire-and-forget loses deferred fetch failures : Invoke returns the Task from FetchTaskResponseAsync, but nothing awaits it. Any failure in ConsumeDeferredResponseAsync is unobserved and the awaiting TaskCompletionSource never completes, so the caller hangs. Await the returned Task, and call TrySetException on requiredResponse in a catch block.
-                s_fetchGenericTaskResponse.MakeGenericMethod((Type)requiredResponse.State!).Invoke(this, new object?[] { statusChangeMessage, requiredResponse });
+                StartFetchTaskResponse(statusChangeMessage, requiredResponse);
             }
         }
 
@@ -218,6 +218,8 @@ namespace Democrite.Framework.Core.Services
         public async Task<Task<IExecutionResult<TResponse>>> ReservedDeferredWorkSlotImpl<TResponse>(Guid id, CancellationToken? token = null)
         {
             Task<IExecutionResult<TResponse>>? task = null;
+            DeferredStatusMessage? alreadyTerminatedStatus = null;
+            ITaskCompletionSourceEx? alreadyTerminatedResponse = null;
 
             using (await this._deferredLocker.LockAsync())
             {
@@ -228,28 +230,55 @@ namespace Democrite.Framework.Core.Services
                 }
                 else
                 {
-                    //TO-DO from Opus 5.5 Awaiter hangs if deferred already finished : If the Finished/Failed notification arrives before GetDeferredWorkAwaiterAsync registers (a race on fast work), a new TCS is created that nobody will ever complete (Failed is a TODO). When the stored status is terminal, fetch the response immediately instead of waiting.
+                    DeferredStatusMessage? knownStatus = null;
                     if (this._deferredStatus.TryGetValue(id, out var deferredStatusMessage))
                     {
                         if (deferredStatusMessage.Status == DeferredStatusEnum.Cancelled)
                             throw new OperationCanceledException();
 
-                        // TODO : managed failed status
+                        knownStatus = deferredStatusMessage;
                     }
 
                     var taskCompletion = new TaskCompletionSourceEx<IExecutionResult<TResponse>>(typeof(TResponse));
                     task = taskCompletion.Task;
                     this._awaitingTasks.Add(id, taskCompletion);
+
+                    // Terminal notification already received before registration : fetch the response now instead of waiting a notification that will never come
+                    if (knownStatus is not null &&
+                        (knownStatus.Value.Status == DeferredStatusEnum.Finished || knownStatus.Value.Status == DeferredStatusEnum.Failed))
+                    {
+                        alreadyTerminatedStatus = knownStatus;
+                        alreadyTerminatedResponse = taskCompletion;
+                    }
                 }
             }
 
-            //TO-DO from Opus 5.5 Cancellation registration leaked and blocks synchronously : The CancellationTokenRegistration is never disposed, so it stays rooted on long-lived tokens after the task completes, and the callback blocks synchronously on a SemaphoreSlim. Dispose the registration when the task completes, and use a non-blocking lock or a ConcurrentDictionary.
-            token?.Register(uid =>
-            {
-                var deferredTaskUid = (Guid)uid!;
+            if (alreadyTerminatedStatus is not null && alreadyTerminatedResponse is not null)
+                StartFetchTaskResponse(alreadyTerminatedStatus.Value, alreadyTerminatedResponse);
 
-                this._deferredLocker.Lock();
-                try
+            if (token is not null && token.Value.CanBeCanceled && !task.IsCompleted)
+            {
+                var registration = token.Value.Register(uid => _ = CancelAwaitingTaskAsync((Guid)uid!), id, true);
+
+                // Release the registration as soon as the awaited task is done to avoid rooting it on long-lived tokens
+                _ = task.ContinueWith(static (_, reg) => ((CancellationTokenRegistration)reg!).Dispose(),
+                                  registration,
+                                  CancellationToken.None,
+                                  TaskContinuationOptions.ExecuteSynchronously,
+                                  TaskScheduler.Default);
+            }
+
+            return task;
+        }
+
+        /// <summary>
+        /// Cancel and forget the awaiting task related to <paramref name="deferredTaskUid"/> without blocking the cancelling thread
+        /// </summary>
+        private async Task CancelAwaitingTaskAsync(Guid deferredTaskUid)
+        {
+            try
+            {
+                using (await this._deferredLocker.LockAsync())
                 {
                     if (this._awaitingTasks.TryGetValue(deferredTaskUid, out var pendingTask))
                     {
@@ -257,13 +286,39 @@ namespace Democrite.Framework.Core.Services
                         pendingTask.TrySetCanceled();
                     }
                 }
-                finally
-                {
-                    this._deferredLocker.Release();
-                }
-            }, id, true);
+            }
+            catch (Exception ex)
+            {
+                this._logger.OptiLog(LogLevel.Error, "Deferred awaiting task cancellation failed {deferredId} : {exception}", deferredTaskUid, ex);
+            }
+        }
 
-            return task;
+        /// <summary>
+        /// Start fetching the deferred response in background (not awaited to avoid blocking the notifying, non-reentrant, handler grain)
+        /// while ensuring any failure is propagated to <paramref name="requiredResponse"/>.
+        /// </summary>
+        private void StartFetchTaskResponse(DeferredStatusMessage statusChangeMessage, ITaskCompletionSourceEx requiredResponse)
+        {
+            Task fetchTask;
+            try
+            {
+                fetchTask = (Task)s_fetchGenericTaskResponse.MakeGenericMethod((Type)requiredResponse.State!).Invoke(this, new object?[] { statusChangeMessage, requiredResponse })!;
+            }
+            catch (Exception ex)
+            {
+                var rootEx = (ex as TargetInvocationException)?.InnerException ?? ex;
+                this._logger.OptiLog(LogLevel.Error, "Deferred response fetch failed {deferredId} : {exception}", statusChangeMessage.DeferredId, rootEx);
+                requiredResponse.TrySetException(rootEx);
+                return;
+            }
+
+            fetchTask.ContinueWith((t, state) =>
+            {
+                var response = (ITaskCompletionSourceEx)state!;
+                var ex = t.Exception!.InnerExceptions.Count == 1 ? t.Exception.InnerExceptions[0] : t.Exception;
+                this._logger.OptiLog(LogLevel.Error, "Deferred response fetch failed {deferredId} : {exception}", statusChangeMessage.DeferredId, ex);
+                response.TrySetException(ex);
+            }, requiredResponse, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 
         /// <summary>
@@ -301,7 +356,8 @@ namespace Democrite.Framework.Core.Services
                                                                          statusChangeMessage.Status == DeferredStatusEnum.Cancelled,
                                                                          internalException is not null ? DemocriteErrorCodes.ToDecryptErrorCode(internalException.ErrorCode) : string.Empty,
                                                                          internalException?.GetFullString(),
-                                                                         result);
+                                                                         result,
+                                                                         hasOutput: statusChangeMessage.Status == DeferredStatusEnum.Finished && result is not null);
 
             requiredResponse.TrySetResultObject(executionResult);
         }

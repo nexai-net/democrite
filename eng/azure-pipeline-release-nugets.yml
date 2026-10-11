@@ -38,10 +38,8 @@ variables:
     ${{ else }}:
       value: "*.nupkg"
 
-  # Democrite framework version (same as SharedFrameworkAssmblyInfo.props)
-  #TO-DO from Opus 5.5 Package version hard-coded twice : The value 1.0.0 is duplicated here and in SharedFrameworkAssmblyInfo.props (Version, AssemblyVersion, FileVersion, InformationalVersion), so the two can drift apart and releases need manual edits. Use a single source of truth such as a pipeline parameter or variable passed as /p:Version, or a tool like Nerdbank.GitVersioning or MinVer.
-  - name: FinalPkgVersion
-    value: 1.0.0
+  # Democrite framework version : FinalPkgVersion is set at runtime by the 'Read package version' step
+  # from <Version> in SharedFrameworkAssemblyInfo.props (single source of truth)
 
 resources:
   repositories:
@@ -58,6 +56,17 @@ steps:
       includePreviewVersions: true # Required for preview versions
 
   - task: NuGetAuthenticate@1
+
+  - pwsh: |
+      $props = Get-Content -Raw -Path "$(Build.SourcesDirectory)/SharedFrameworkAssemblyInfo.props"
+      if ($props -notmatch '<Version>\s*([^<\s]+)\s*</Version>') {
+        Write-Error "Unable to find <Version> in SharedFrameworkAssemblyInfo.props"
+        exit 1
+      }
+      $version = $Matches[1]
+      Write-Host "Democrite package version : $version"
+      Write-Host "##vso[task.setvariable variable=FinalPkgVersion]$version"
+    displayName: 'Read package version from SharedFrameworkAssemblyInfo.props'
 
   - template: Templates/dotnet/nuget-steps.yaml@tpl
     parameters:

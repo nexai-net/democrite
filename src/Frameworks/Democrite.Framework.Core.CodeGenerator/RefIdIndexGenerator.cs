@@ -15,7 +15,7 @@ namespace Democrite.Framework.Core.CodeGenerator
     using System.Text;
 
     [Generator]
-    public sealed class RefIdIndexGenerator : ISourceGenerator, ISyntaxContextReceiver
+    public sealed class RefIdIndexGenerator : ISourceGenerator
     {
         #region Fields
 
@@ -23,8 +23,6 @@ namespace Democrite.Framework.Core.CodeGenerator
 
         private static readonly string s_assemblyInfoTemplate;
         private static readonly string s_providerTemplate;
-
-        private readonly HashSet<MemberDeclarationSyntax> _vgrainRefToBuild;
 
         #endregion
 
@@ -69,7 +67,6 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// </summary>
         public RefIdIndexGenerator()
         {
-            this._vgrainRefToBuild = new HashSet<MemberDeclarationSyntax>();
         }
 
         #endregion
@@ -79,19 +76,15 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// <inheritdoc />
         public void Execute(GeneratorExecutionContext context)
         {
-            //TO-DO from Opus 5.5 Generator state persists across compilations : The generator registers itself as receiver and accumulates nodes in an instance HashSet that is never cleared, so in IDE/incremental builds stale nodes from previous compilations are processed (GetSemanticModel throws 'tree not part of compilation') and memory grows; the guard condition is also meaningless. Create a fresh receiver per pass (RegisterForSyntaxNotifications(() => new Receiver())) or migrate to IIncrementalGenerator.
-            if (context.SyntaxContextReceiver != this && this._vgrainRefToBuild.Any())
-                return;
+            // A fresh receiver is created by Roslyn for each compilation pass
+            var vgrainRefToBuild = (IEnumerable<MemberDeclarationSyntax>)(context.SyntaxContextReceiver as RefIdSyntaxReceiver)?.Members ?? Array.Empty<MemberDeclarationSyntax>();
 
             var errors = new List<Diagnostic>();
 
-            var semanticModels = context.Compilation.SyntaxTrees.Select(t => context.Compilation.GetSemanticModel(t))
-                                                                 .ToArray();
-
             var sourceNamespace = context.Compilation.AssemblyName;
 
-            var indexedByType = this._vgrainRefToBuild.GroupBy(s => (s.Kind(), IsVGrain: IsVGrain(s)))
-                                                      .ToDictionary(k => k.Key, v => v.ToArray());
+            var indexedByType = vgrainRefToBuild.GroupBy(s => (s.Kind(), IsVGrain: IsVGrain(s, context.Compilation)))
+                                                .ToDictionary(k => k.Key, v => v.ToArray());
 
             var registryLines = new StringBuilder();
 
@@ -120,18 +113,23 @@ namespace Democrite.Framework.Core.CodeGenerator
                     var attrData = member.AttributeLists.SelectMany(a => GetAttributes(a, context.Compilation))
                                                         .FirstOrDefault(a => a.ApplicationSyntaxReference?.GetSyntax() == attr);
 
-                    //TO-DO from Opus 5.5 Null attrData crashes the generator : attrData (FirstOrDefault) or AttributeConstructor (unresolved attribute) can be null, causing an NRE that aborts generation for the whole assembly. Check for null and report an EDG diagnostic instead.
+                    if (attrData?.AttributeConstructor is null)
+                    {
+                        errors.Add(Diagnostic.Create(ErrorManager.EDG999, attr.GetLocation(), "attribute '" + attr.Name + "' could not be resolved"));
+                        continue;
+                    }
+
                     var ctrParameters = attrData.AttributeConstructor.Parameters.Select(p => p.Name).ToArray();
 
-                    //TO-DO from Opus 5.5 Attribute argument index mapping is wrong : Positional arguments are named from NamedArguments[index] and values always come from ConstructorArguments[index], so named (Prop = x) arguments or mixed forms read wrong values or throw IndexOutOfRange; ArgumentList can also be null. Build the map from attrData.ConstructorArguments + AttributeConstructor.Parameters and attrData.NamedArguments directly.
-                    var args = attr.ArgumentList.Arguments
-                                                .Select((a, i) => (Arg: a, Indx: i))
-                                                .ToDictionary(k => k.Arg.NameColon?.Name.Identifier.Text ??
-                                                                   k.Arg.NameEquals?.Name.Identifier.Text ??
-                                                                   (k.Indx < attrData.NamedArguments.Length
-                                                                            ? attrData.NamedArguments[k.Indx].Key
-                                                                            : ctrParameters[k.Indx]),
-                                                          v => attrData.ConstructorArguments[v.Indx].ToCSharpString());
+                    // Semantic constructor arguments are already ordered as the constructor parameters (named "param:" and default values resolved)
+                    var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                    for (int i = 0; i < attrData.ConstructorArguments.Length && i < ctrParameters.Length; i++)
+                        args[ctrParameters[i]] = attrData.ConstructorArguments[i].ToCSharpString();
+
+                    // Property/field assignments (Prop = value)
+                    foreach (var namedArg in attrData.NamedArguments)
+                        args[namedArg.Key] = namedArg.Value.ToCSharpString();
 
                     var memberIdentifier = (member as ClassDeclarationSyntax)?.Identifier ??
                                            (member as InterfaceDeclarationSyntax)?.Identifier ??
@@ -154,10 +152,16 @@ namespace Democrite.Framework.Core.CodeGenerator
 
                     if (byType.Key.Item1 == SyntaxKind.MethodDeclaration)
                     {
+                        // Method could be declared in class, struct, interface or record
+                        var parentTypeDeclaration = member.Parent as TypeDeclarationSyntax;
+                        if (parentTypeDeclaration is null)
+                        {
+                            errors.Add(Diagnostic.Create(ErrorManager.EDG002, member.GetLocation(), member.Parent?.GetType()));
+                            continue;
+                        }
+
                         registryLines.Append("registry.RegisterMethod(");
-                        //TO-DO from Opus 5.5 NRE for methods inside records : If the method's parent is a record (or other type declaration), mthdMemberIdentifier is null and .Value throws. Use (member.Parent as TypeDeclarationSyntax)?.Identifier and report a diagnostic when null.
-                        var mthdMemberIdentifier = (member.Parent as ClassDeclarationSyntax)?.Identifier ?? (member.Parent as InterfaceDeclarationSyntax)?.Identifier ?? (member.Parent as StructDeclarationSyntax)?.Identifier;
-                        model = context.Compilation.GetSemanticModel(mthdMemberIdentifier.Value.SyntaxTree).GetDeclaredSymbol(member.Parent);
+                        model = context.Compilation.GetSemanticModel(parentTypeDeclaration.SyntaxTree).GetDeclaredSymbol(parentTypeDeclaration);
 
                         var mthd = (MethodDeclarationSyntax)member;
 
@@ -165,21 +169,11 @@ namespace Democrite.Framework.Core.CodeGenerator
 
                         nbGenericArgs = mthd.TypeParameterList?.Parameters.Count ?? 0;
 
-                        //TO-DO from Opus 5.5 Quadratic symbol lookup swallowing exceptions : For each parameter every semantic model of the compilation is tried with GetDeclaredSymbol inside an empty catch, costing O(params x trees) and hiding real errors. Use the semantic model of the parameter's own SyntaxTree (or GetTypeInfo(p.Type)).
+                        // Parameters belong to the method syntax tree, use its semantic model directly
+                        var methodSemanticModel = context.Compilation.GetSemanticModel(mthd.SyntaxTree);
+
                         arguments.AddRange(mthd.ParameterList.Parameters
-                                                             .Select(p => (p.Type?.GetTypeFullNameWithNamespace(t => semanticModels.Select(s =>
-                                                                                                                                           {
-                                                                                                                                               try
-                                                                                                                                               {
-                                                                                                                                                   return s.GetDeclaredSymbol(t);
-                                                                                                                                               }
-                                                                                                                                               catch (Exception ex)
-                                                                                                                                               {
-                                                                                                                                                   return null;
-                                                                                                                                               }
-                                                                                                                                           })
-                                                                                                                                           .Where(s => s != null)
-                                                                                                                                           .FirstOrDefault()) ?? "global::Democrite.Toolbox.AnyType"))
+                                                             .Select(p => (p.Type?.GetTypeFullNameWithNamespace(t => methodSemanticModel.GetDeclaredSymbol(t)) ?? "global::Democrite.Toolbox.AnyType"))
                                                              .Select(s => "typeof(" + s + ")"));
                     }
                     else
@@ -299,17 +293,7 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// <inheritdoc />
         public void Initialize(GeneratorInitializationContext context)
         {
-            context.RegisterForSyntaxNotifications(() => this);
-        }
-
-        /// <inheritdoc />
-        public void OnVisitSyntaxNode(GeneratorSyntaxContext context)
-        {
-            if (context.Node is MemberDeclarationSyntax classDeclaration)
-            {
-                if (s_attributesSNI.Any(a => classDeclaration.HasAttribute(a)))
-                    this._vgrainRefToBuild.Add(classDeclaration);
-            }
+            context.RegisterForSyntaxNotifications(() => new RefIdSyntaxReceiver());
         }
 
         #region Tools
@@ -337,20 +321,46 @@ namespace Democrite.Framework.Core.CodeGenerator
         /// <summary>
         /// Detect if the type is a vgrain
         /// </summary>
-        private bool IsVGrain(MemberDeclarationSyntax s)
+        private static bool IsVGrain(MemberDeclarationSyntax s, Compilation compilation)
         {
-            //TO-DO from Opus 5.5 IsVGrain ignores inheritance and loop variable : The lambda ignores the ancestor m and re-checks only s's direct base list, so types inheriting IVGrain indirectly (e.g. ILogicalDoorVGrain : IDoorVGrain, or classes deriving from a VGrain base) are misclassified as plain Type. Use the semantic model (AllInterfaces contains IVGrain).
-            return (s is ClassDeclarationSyntax || s is InterfaceDeclarationSyntax) &&
-                    s.Ancestors()
-                     .SelectMany(m => (s is ClassDeclarationSyntax cls
-                                             ? cls.BaseList?.Types
-                                                 : s is InterfaceDeclarationSyntax i
-                                                         ? (IEnumerable<BaseTypeSyntax>)i.BaseList?.Types
-                                                         : Array.Empty<BaseTypeSyntax>()) ?? Array.Empty<BaseTypeSyntax>())
-                     .Any(c => c?.Type != null && c.Type.GetTypeSimpleName() == "IVGrain");
+            if (!(s is ClassDeclarationSyntax || s is InterfaceDeclarationSyntax))
+                return false;
+
+            // Use semantic model to also detect IVGrain inherited indirectly (base class or interface inheritance)
+            var symbol = compilation.GetSemanticModel(s.SyntaxTree).GetDeclaredSymbol(s) as INamedTypeSymbol;
+            if (symbol is null)
+                return false;
+
+            return symbol.AllInterfaces.Any(i => i.Name == "IVGrain" &&
+                                                 i.ContainingNamespace?.ToDisplayString() == "Democrite.Framework.Core.Abstractions");
         }
 
         #endregion
+
+        #endregion
+
+        #region Nested
+
+        /// <summary>
+        /// Syntax receiver collecting members decorated with reference attributes; one instance per compilation pass
+        /// </summary>
+        private sealed class RefIdSyntaxReceiver : ISyntaxContextReceiver
+        {
+            /// <summary>
+            /// Gets the members to index.
+            /// </summary>
+            public HashSet<MemberDeclarationSyntax> Members { get; } = new HashSet<MemberDeclarationSyntax>();
+
+            /// <inheritdoc />
+            public void OnVisitSyntaxNode(GeneratorSyntaxContext context)
+            {
+                if (context.Node is MemberDeclarationSyntax classDeclaration)
+                {
+                    if (s_attributesSNI.Any(a => classDeclaration.HasAttribute(a)))
+                        this.Members.Add(classDeclaration);
+                }
+            }
+        }
 
         #endregion
     }

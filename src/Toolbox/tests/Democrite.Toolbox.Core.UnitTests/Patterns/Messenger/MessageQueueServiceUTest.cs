@@ -28,6 +28,7 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Messenger
         #region Fields
         
         private static readonly TimeSpan s_timeout;
+        private static readonly TimeSpan s_unwantedDeliveryDelay = TimeSpan.FromMilliseconds(200);
 
         #endregion
 
@@ -162,12 +163,20 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Messenger
             using (var service = new MessageQueueService())
             {
                 var messageReceived = new List<TMesssage>();
+                var allExpectedReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                if (expectedMessageToBeReceived.Count == 0)
+                    allExpectedReceived.TrySetResult();
 
                 var subToken = service.Subscribe<TMesssage>(category).Message(this, (msg, category) =>
                 {
                     lock (messageReceived)
                     {
                         messageReceived.Add(msg);
+
+                        if (messageReceived.Count >= expectedMessageToBeReceived.Count)
+                            allExpectedReceived.TrySetResult();
+
                         token.ThrowIfCancellationRequested();
                     }
                     return ValueTask.CompletedTask;
@@ -183,20 +192,11 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Messenger
                     service.Push<TMesssage>(msg, pushCategory);
                 }
 
-                //TO-DO from Opus 5.5 Polling loop with fixed delays : The test polls messageReceived.Count outside the lock every 100 ms, then sleeps a fixed 1 s twice, which makes it slow and timing-dependent. Signal completion with a TaskCompletionSource set when the expected count is reached, read the list under the lock, and check for unwanted deliveries with a short, bounded wait.
-                while (true)
-                {
-                    if (messageReceived.Count >= expectedMessageToBeReceived.Count)
-                    {
-                        // Wait to allow error message to arrived
-                        token.ThrowIfCancellationRequested();
-                        await Task.Delay(1000);
-                        break;
-                    }
+                // Signaled by the handler when the expected count is reached (bounded by the test timeout token)
+                await allExpectedReceived.Task.WaitAsync(token);
 
-                    token.ThrowIfCancellationRequested();
-                    await Task.Delay(100);
-                }
+                // Short, bounded wait to let unwanted deliveries (duplicates, filtered messages) of the fire-and-forget Push arrive
+                await Task.Delay(s_unwantedDeliveryDelay, token);
 
                 // unsubscribe
                 subToken.Dispose();
@@ -204,15 +204,18 @@ namespace Democrite.Toolbox.Core.UnitTests.Patterns.Messenger
                 token.ThrowIfCancellationRequested();
 
                 // Send again to ensure subscription have been correctly removed
+                // SendAsync completes only once every remaining subscriber processed the message : no delay needed
                 foreach (var msg in messageToSend)
-                    service.Push<TMesssage>(msg, category);
+                    await service.SendAsync<TMesssage>(msg, category, token);
 
-                // Wait to allow at least on error message to arrived
-                token.ThrowIfCancellationRequested();
-                await Task.Delay(1000);
+                TMesssage[] receivedSnapshot;
+                lock (messageReceived)
+                {
+                    receivedSnapshot = messageReceived.ToArray();
+                }
 
-                var results = messageReceived.GroupBy(m => m.Uid)
-                                             .ToDictionary(k => k.Key, v => v.ToArray());
+                var results = receivedSnapshot.GroupBy(m => m.Uid)
+                                              .ToDictionary(k => k.Key, v => v.ToArray());
 
                 Check.WithCustomMessage("Same message received multiple times")
                      .ThatCode(() => results.Any(r => r.Value.Length > 1))

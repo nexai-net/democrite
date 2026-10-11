@@ -57,6 +57,9 @@ namespace Democrite.Framework.Node.Blackboard.Builders.Templates
         public IBlackboardTemplateControllerBuilder UseController<TStorageController>() where TStorageController : TSpecializedController
         {
             this._controller = (ConcretType)typeof(TStorageController).GetAbstractType();
+
+            // Builder are now reused between calls, a new controller setup must not inherit a previous dedicated option
+            this._option = null;
             return this._root;
         }
 

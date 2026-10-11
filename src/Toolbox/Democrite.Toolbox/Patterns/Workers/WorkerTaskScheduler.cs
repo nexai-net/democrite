@@ -163,11 +163,13 @@ namespace Democrite.Toolbox.Patterns.Workers
             {
                 if (this.ExecTask == null)
                 {
-                    //TO-DO from Opus 5.5 Pre-cancelled start leaves completion source pending : If the token is already cancelled, StartNew never runs the lambda, so _completionSource is never completed and ExecTask callers wait forever. Use Task.Factory.StartNew(..., CancellationToken.None, ...), or add a continuation that calls TrySetCanceled on the completion source.
+                    // CancellationToken.None : the lambda must always run to complete the completion source, even if the token is already cancelled
                     this.ExecTask = Task.Factory.StartNew(async () =>
                     {
                         try
                         {
+                            token.ThrowIfCancellationRequested();
+
                             using (var tokens = CancellationTokenSource.CreateLinkedTokenSource(this._waitingCancellationToken ?? default, token))
                             {
                                 await this._func!(tokens.Token);
@@ -182,7 +184,7 @@ namespace Democrite.Toolbox.Patterns.Workers
                         {
                             this._completionSource?.TrySetException(ex);
                         }
-                    }, token, Task.Factory.CreationOptions, this._scheduler!).Unwrap();
+                    }, CancellationToken.None, Task.Factory.CreationOptions, this._scheduler!).Unwrap();
                 }
                 return this.ExecTask;
             }
@@ -201,8 +203,7 @@ namespace Democrite.Toolbox.Patterns.Workers
             try
             {
                 if (maximumConcurrencyLevel < 1)
-                    //TO-DO from Opus 5.5 Default concurrency becomes 0 on small machines : With 1 or 2 cores, ProcessorCount / 3.0 truncates to 0. The scheduler then never runs any task, and PushTaskWhenAvailableSlotAsync waits forever. Clamp the value with Math.Max(1, ...).
-                    maximumConcurrencyLevel = (uint)(Environment.ProcessorCount / 3.0);
+                    maximumConcurrencyLevel = (uint)Math.Max(1, (int)(Environment.ProcessorCount / 3.0));
 
                 this._maximumConcurrencyLevel = maximumConcurrencyLevel;
             }
@@ -372,6 +373,9 @@ namespace Democrite.Toolbox.Patterns.Workers
             var workToDo = new List<LinkedListNode<TaskWorkerContainerAsync>>();
             this._newElementToProcessEventHandler.WaitOne(1000);
 
+            // Created once to wake up the loop on scheduler disposal
+            var lifeEndTask = Task.Delay(Timeout.Infinite, this._lifeToken.Token);
+
             try
             {
                 // Build processing group from _waitingTasks
@@ -388,13 +392,38 @@ namespace Democrite.Toolbox.Patterns.Workers
 
                     try
                     {
-                        //TO-DO from Opus 5.5 Batch barrier: one slow task blocks all slots : The loop waits for the whole batch to finish before pulling new work, so a single long task leaves the other N-1 slots idle. The empty catch below also hides failures. Refill slots as tasks finish (Task.WhenAny or a SemaphoreSlim-based worker loop), and log the exceptions.
-                        await workToDo.Select(w => w.ValueRef.ExecuteAsync(this._lifeToken.Token))
-                                      .ToArray()
-                                      .SafeWhenAllAsync(this._lifeToken.Token);
+                        // Wait for the first task to finish (not the whole batch) to refill the free slots as soon as possible
+                        var waitTasks = new List<Task>(workToDo.Count + 2);
+                        foreach (var work in workToDo)
+                            waitTasks.Add(work.ValueRef.ExecuteAsync(this._lifeToken.Token));
+
+                        waitTasks.Add(lifeEndTask);
+
+                        RegisteredWaitHandle? newElementRegistration = null;
+                        try
+                        {
+                            // Some slots are free : also wake up when new work is pushed (or the concurrency level changed)
+                            if (workToDo.Count < this._maximumConcurrencyLevel)
+                            {
+                                var newElementSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                                newElementRegistration = ThreadPool.RegisterWaitForSingleObject(this._newElementToProcessEventHandler,
+                                                                                                static (s, _) => ((TaskCompletionSource)s!).TrySetResult(),
+                                                                                                newElementSignal,
+                                                                                                Timeout.Infinite,
+                                                                                                executeOnlyOnce: true);
+                                waitTasks.Add(newElementSignal.Task);
+                            }
+
+                            await Task.WhenAny(waitTasks);
+                        }
+                        finally
+                        {
+                            newElementRegistration?.Unregister(null);
+                        }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        this._logger.OptiLog(LogLevel.Error, "Worker task scheduler wait processing failed : {exception}", ex);
                     }
 
                     await CleanAndRecycle(workToDo);
@@ -426,6 +455,9 @@ namespace Democrite.Toolbox.Patterns.Workers
                     var task = worker.ValueRef.ExecTask;
                     if (task is null || !task.IsCompleted)
                         continue;
+
+                    if (task.IsFaulted)
+                        this._logger.OptiLog(LogLevel.Error, "Worker task scheduler task execution failed : {exception}", task.Exception);
 
                     // recycle
                     workToDo.RemoveAt(i);

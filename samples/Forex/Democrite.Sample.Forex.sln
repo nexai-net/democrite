@@ -6,7 +6,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{DA17F781-445B-4AA4-937D-0367EB4C68FE}"
 	ProjectSection(SolutionItems) = preProject
 		Directory.Packages.props = Directory.Packages.props
-		SharedFrameworkAssmblyInfo.props = SharedFrameworkAssmblyInfo.props
+		SharedFrameworkAssemblyInfo.props = SharedFrameworkAssemblyInfo.props
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nexai.Sample.Forex.VGrain.Abstractions", "Nexai.Sample.Forex.VGrain.Abstractions\Nexai.Sample.Forex.VGrain.Abstractions.csproj", "{5562D458-0378-4153-B054-D1A35553FDE6}"

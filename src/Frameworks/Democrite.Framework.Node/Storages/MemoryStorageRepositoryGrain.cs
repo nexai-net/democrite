@@ -78,13 +78,13 @@ namespace Democrite.Framework.Node.Storages
         }
 
         /// <inheritdoc />
-        public async Task<bool> WriteDatAsync(TKey key,
-                                              object? entityKey,
-                                              bool insertIfNew,
-                                              string stateName,
-                                              ReadOnlyMemory<byte> data,
-                                              AbstractType entityType,
-                                              IReadOnlyCollection<AbstractType> parentTypes)
+        public async Task<bool> WriteDataAsync(TKey key,
+                                               object? entityKey,
+                                               bool insertIfNew,
+                                               string stateName,
+                                               ReadOnlyMemory<byte> data,
+                                               AbstractType entityType,
+                                               IReadOnlyCollection<AbstractType> parentTypes)
         {
             var containKey = this._store.TryGetValue(key, out var existing) && object.Equals(existing.Item1, entityKey);
             if (!insertIfNew && !containKey)

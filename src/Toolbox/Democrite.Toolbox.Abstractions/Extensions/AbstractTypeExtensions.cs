@@ -25,7 +25,7 @@ namespace System
         private static readonly Dictionary<MethodBase, AbstractMethod> s_abstractMethodCache;
         private static readonly ReaderWriterLockSlim s_abstractMethodCachedLocker;
 
-        private static readonly Dictionary<string, MethodBase> s_methodInfoFromAbstractCache;
+        private static readonly Dictionary<(Type Type, string MethodUniqueId), MethodBase> s_methodInfoFromAbstractCache;
         private static readonly ReaderWriterLockSlim s_methodInfoFromAbstractCacheLocker;
 
         #endregion
@@ -43,7 +43,7 @@ namespace System
             s_abstractMethodCache = new Dictionary<MethodBase, AbstractMethod>();
             s_abstractMethodCachedLocker = new ReaderWriterLockSlim();
 
-            s_methodInfoFromAbstractCache = new Dictionary<string, MethodBase>();
+            s_methodInfoFromAbstractCache = new Dictionary<(Type Type, string MethodUniqueId), MethodBase>();
             s_methodInfoFromAbstractCacheLocker = new ReaderWriterLockSlim();
         }
 
@@ -104,7 +104,15 @@ namespace System
                 }
             }
 
-            //TO-DO from Opus 5.5 Unused generic parameter crashes resolution : When a generic method parameter appears only in the return type, its solvedGeneric slot stays null and FoundCommonType(null) throws ArgumentNullException. For an empty set FoundCommonType returns default (null) and MakeGenericMethod fails. Detect unresolved slots and throw a clear exception, or fall back to the constraint type.
+            for (var i = 0; i < solvedGeneric.Length; i++)
+            {
+                if (solvedGeneric[i] is null || solvedGeneric[i].Count == 0)
+                {
+                    throw new InvalidOperationException("Generic argument '" + genericArgs[i].Name + "' of method " + method +
+                                                        " couldn't be inferred from the parameters (not used by any parameter)");
+                }
+            }
+
             var genericResolution = solvedGeneric.Select(FoundCommonType).ToArray();
 
             var solveMethod = method.MakeGenericMethod(genericResolution);
@@ -144,11 +152,12 @@ namespace System
         {
             MethodBase? mthd = null;
 
+            var cacheKey = (type, method.MethodUniqueId);
+
             s_methodInfoFromAbstractCacheLocker.EnterReadLock();
             try
             {
-                //TO-DO from Opus 5.5 ToMethod cache ignores the target type : The cache key is only MethodUniqueId, so ToMethod(method, typeB) returns the MethodBase resolved earlier for typeA, for example an interface method resolved on different implementations. The full reflection scan also runs under the global write lock. Key the cache by (type, MethodUniqueId) and resolve outside the write lock.
-                if (s_methodInfoFromAbstractCache.TryGetValue(method.MethodUniqueId, out var cacheMthd))
+                if (s_methodInfoFromAbstractCache.TryGetValue(cacheKey, out var cacheMthd))
                     return cacheMthd;
             }
             finally
@@ -156,30 +165,29 @@ namespace System
                 s_methodInfoFromAbstractCacheLocker.ExitReadLock();
             }
 
+            // Resolve outside the lock, reflection scan could be long
+            mthd = type.GetAllMethodInfos(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                       .FirstOrDefault(m => method.IsEqualTo(m, true));
+
+            if (mthd is null)
+                mthd = type.GetConstructors().FirstOrDefault(c => method.IsEqualTo(c, true));
+
+            if (mthd is null)
+                return null;
+
+            if (mthd is MethodInfo info && mthd.IsGenericMethodDefinition && method.HasGenericArguments && method.IsIncomplet == false)
+            {
+                mthd = info.MakeGenericMethod(method.GenericArguments
+                                                    .Select(g => g.ToType())
+                                                    .ToArray());
+            }
+
             s_methodInfoFromAbstractCacheLocker.EnterWriteLock();
             try
             {
-                if (s_methodInfoFromAbstractCache.TryGetValue(method.MethodUniqueId, out var cacheMthd))
-                    return cacheMthd;
-
-                mthd = type.GetAllMethodInfos(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                           .FirstOrDefault(m => method.IsEqualTo(m, true));
-
-                if (mthd is null)
-                    mthd = type.GetConstructors().FirstOrDefault(c => method.IsEqualTo(c, true));
-
-                if (mthd != null)
-                {
-                    if (mthd is MethodInfo info && mthd.IsGenericMethodDefinition && method.HasGenericArguments && method.IsIncomplet == false)
-                    {
-                        mthd = info.MakeGenericMethod(method.GenericArguments
-                                                            .Select(g => g.ToType())
-                                                            .ToArray());
-                    }
-
-                    if (!s_methodInfoFromAbstractCache.ContainsKey(method.MethodUniqueId))
-                        s_methodInfoFromAbstractCache.Add(method.MethodUniqueId, mthd);
-                }
+                // Keep the first instance stored if another thread resolved it meanwhile
+                if (!s_methodInfoFromAbstractCache.TryAdd(cacheKey, mthd))
+                    return s_methodInfoFromAbstractCache[cacheKey];
 
                 return mthd;
             }
@@ -476,13 +484,14 @@ namespace System
 
             var buildedType = BuildAbstractType(type);
 
-            //TO-DO from Opus 5.5 AbstractType cache is never populated : GetThreadSafeAbstractType checks s_abstractTypeCache again after the build but never calls Add, and nothing else writes to the cache. Every GetAbstractType call rebuilds the whole type graph while holding the global write lock, which serializes all callers. Add the built type to s_abstractTypeCache (for non-Generic/GenericRef categories) instead of doing a second TryGetValue.
             if (buildedType is not null &&
                 buildedType.Category != AbstractTypeCategoryEnum.Generic &&
                 buildedType.Category != AbstractTypeCategoryEnum.GenericRef)
             {
-                if (s_abstractTypeCache.TryGetValue(type, out var newBuildedAbstractType))
-                    return newBuildedAbstractType;
+                // Caller always hold s_abstractTypeCachedLocker write lock
+                // Keep the first instance stored (could have been added during a recursive build)
+                if (!s_abstractTypeCache.TryAdd(type, buildedType))
+                    return s_abstractTypeCache[type];
             }
 
             return buildedType!;

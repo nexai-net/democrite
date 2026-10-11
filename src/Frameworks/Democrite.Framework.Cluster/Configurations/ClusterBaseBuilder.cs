@@ -483,9 +483,9 @@ namespace Democrite.Framework.Cluster.Configurations
             serviceCollection.AddSingleton<DeferredClientObserver>()
                              .AddSingleton<IDeferredAwaiterHandler>(p => p.GetRequiredService<DeferredClientObserver>());
 
-            //TO-DO from Opus 5.5 Second service provider built and never disposed : Calling BuildServiceProvider during configuration creates a second container with duplicate singletons (possibly starting side effects) that is never disposed. Use the builder's InMemoryLogger, or a dedicated LoggerFactory that is disposed after Build.
-            var loggerFactory = serviceCollection.BuildServiceProvider()
-                                                 .GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+            // Temporary provider only used to get the build logger, disposed at the end of the build (only the logging services are resolved from it)
+            using var buildServiceProvider = serviceCollection.BuildServiceProvider();
+            var loggerFactory = buildServiceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
 
             var logger = loggerFactory.CreateLogger(GetType().Name);
 
@@ -570,11 +570,11 @@ namespace Democrite.Framework.Cluster.Configurations
                 var extensionsDll = extensions.GetChildren()
                                               .Select(x => x.Value)
                                               .Where(x => !string.IsNullOrWhiteSpace(x))
-                                              .SelectMany(d => this._fileSystemHandler.SearchFiles(Environment.CurrentDirectory, d! + ".dll", false))
+                                              .SelectMany(d => SearchExtensionFiles(d!, logger))
                                               .Distinct()
                                               .ToArray();
-                
-                logger.OptiLog(LogLevel.Information, "[Extensions] - Extensions to load - {extensions}", string.Join(Environment.NewLine, extensions));
+
+                logger.OptiLog(LogLevel.Information, "[Extensions] - Extensions to load - {extensions}", string.Join(Environment.NewLine, extensionsDll.Select(e => e.OriginalString)));
 
                 foreach (var extension in extensionsDll)
                 {
@@ -584,7 +584,6 @@ namespace Democrite.Framework.Cluster.Configurations
                     {
                         using (stream)
                         {
-                            //TO-DO from Opus 5.5 Config-driven DLL loading from working directory : Extension DLLs named in configuration are searched in Environment.CurrentDirectory and loaded without integrity checks, so anyone who controls config or the CWD can inject code. Resolve them from AppContext.BaseDirectory or a configured folder, optionally verify a hash or signature, and fix the log at line 576, which prints the IConfigurationSection objects instead of extensionsDll.
                             var assembly = this._assemblyLoader.Load(stream);
                             this._assemblyInspector.RegisterAssemblyAndDependencies(assembly, true);
                             logger.OptiLog(LogLevel.Information, "[Extensions] - Loaded - {extension}", Path.GetFileName(extension.OriginalString));
@@ -615,6 +614,42 @@ namespace Democrite.Framework.Cluster.Configurations
                                                                                                    (d.ServiceType == typeof(IGatewayListProvider) && d.ImplementationType != null)),
                                                                                    ConfigurationSectionNames.ClusterMembershipAutoConfigKey,
                                                                                    logger);
+        }
+
+        /// <summary>
+        /// Search extension dll <paramref name="extensionName"/> in the application base directory (<see cref="AppContext.BaseDirectory"/>);
+        /// fallback on the current working directory for compatibility.
+        /// </summary>
+        private IReadOnlyCollection<Uri> SearchExtensionFiles(string extensionName, ILogger logger)
+        {
+            var fileName = extensionName + ".dll";
+
+            var baseDirectory = AppContext.BaseDirectory;
+            var files = this._fileSystemHandler.SearchFiles(baseDirectory, fileName, false);
+
+            if (files.Count > 0)
+                return files;
+
+            var currentDirectory = Environment.CurrentDirectory;
+            if (string.Equals(Path.GetFullPath(currentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                              Path.GetFullPath(baseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                              StringComparison.OrdinalIgnoreCase))
+            {
+                return files;
+            }
+
+            files = this._fileSystemHandler.SearchFiles(currentDirectory, fileName, false);
+
+            if (files.Count > 0)
+            {
+                logger.OptiLog(LogLevel.Warning,
+                               "[Extensions] - Extension '{extension}' not found in application directory '{baseDirectory}', loaded from current working directory '{currentDirectory}'",
+                               fileName,
+                               baseDirectory,
+                               currentDirectory);
+            }
+
+            return files;
         }
 
         /// <summary>

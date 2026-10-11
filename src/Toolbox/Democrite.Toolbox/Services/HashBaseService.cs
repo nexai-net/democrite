@@ -54,15 +54,15 @@ namespace Democrite.Toolbox.Services
         }
 
         /// <inheritdoc />
-        public ValueTask<string> GetHash(byte[] data,
-                                         CancellationToken token = default)
+        public async ValueTask<string> GetHash(byte[] data,
+                                               CancellationToken token = default)
         {
             ArgumentNullException.ThrowIfNull(data);
 
-            //TO-DO from Opus 5.5 Stream disposed before async hash completes : The ValueTask is returned without being awaited, so the MemoryStream is disposed as soon as the method returns. If GetHash(Stream) ever completes asynchronously (data of 64 KB or more goes through ComputeHashAsync), the later Seek and ReadByte calls hit a disposed stream. Make this method async and await inside the using block.
+            // Await inside the using block : the stream must stay alive until the hash is computed
             using (var stream = new MemoryStream(data))
             {
-                return GetHash(stream, token);
+                return await GetHash(stream, token);
             }
         }
 

@@ -74,10 +74,9 @@ namespace Democrite.Framework.Core.Abstractions
         #region Methods
 
         /// <inheritdoc />
-        //TO-DO from Opus 5.5 Equals(object) uses reference equality : object.Equals falls back to reference equality while IEquatable.Equals, == and GetHashCode are value-based, so collections and object.Equals disagree with ==. Delegate to Equals(obj as DefinitionMetaData).
         public sealed override bool Equals(object? obj)
         {
-            return base.Equals(obj);
+            return Equals(obj as DefinitionMetaData);
         }
 
         /// <inheritdoc />

@@ -37,6 +37,7 @@ namespace Democrite.Framework.Configurations
         private readonly IHost _host;
 
         private CancellationTokenSource? _runningTaskCancellationTokenSource;
+        private CancellationTokenSource? _runningLinkedTokenSource;
         private Task? _runningTask;
         private bool _hostStopped;
         private bool _isRunning;
@@ -105,19 +106,30 @@ namespace Democrite.Framework.Configurations
         {
             await StartAsync(runningFunction, token);
 
+            CancellationTokenSource? linkedTokenSource = null;
             try
             {
-                await this._locker.WaitAsync(token);
+                try
+                {
+                    await this._locker.WaitAsync(token);
 
-                if (this._runningTaskCancellationTokenSource != null)
-                    token = CancellationTokenSource.CreateLinkedTokenSource(token, this._runningTaskCancellationTokenSource.Token).Token;
+                    if (this._runningTaskCancellationTokenSource != null)
+                    {
+                        linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, this._runningTaskCancellationTokenSource.Token);
+                        token = linkedTokenSource.Token;
+                    }
+                }
+                finally
+                {
+                    this._locker.Release();
+                }
+
+                await this._host.WaitForShutdownAsync(token);
             }
             finally
             {
-                this._locker.Release();
+                linkedTokenSource?.Dispose();
             }
-
-            await this._host.WaitForShutdownAsync(token);
         }
 
         /// <inheritdoc />
@@ -144,6 +156,7 @@ namespace Democrite.Framework.Configurations
                 {
                     this._runningTaskCancellationTokenSource = new CancellationTokenSource();
                     var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(token, this._runningTaskCancellationTokenSource.Token);
+                    this._runningLinkedTokenSource = linkedToken;
                     token = linkedToken.Token;
 
                     var serviceToInit = this._host.Services.GetServices<IInitService>();
@@ -190,6 +203,8 @@ namespace Democrite.Framework.Configurations
         public async Task StopAsync(CancellationToken token = default)
         {
             Task? runningTask = null;
+            CancellationTokenSource? runningTaskCancellationTokenSource = null;
+            CancellationTokenSource? runningLinkedTokenSource = null;
             var locker = this._locker;
             try
             {
@@ -219,7 +234,12 @@ namespace Democrite.Framework.Configurations
 
                     this._runningTaskCancellationTokenSource?.Cancel();
 
+                    // Detach sources, disposed once the running task is done
+                    runningTaskCancellationTokenSource = this._runningTaskCancellationTokenSource;
+                    runningLinkedTokenSource = this._runningLinkedTokenSource;
+
                     this._runningTaskCancellationTokenSource = null;
+                    this._runningLinkedTokenSource = null;
                     this._runningTask = null;
                 }
 
@@ -243,6 +263,12 @@ namespace Democrite.Framework.Configurations
             catch (OperationCanceledException)
             {
                 // It's normal if the only error is a cancellation : OperationCanceledException
+            }
+            finally
+            {
+                // Sources detached in the lock above, dispose them once the running task is done
+                runningLinkedTokenSource?.Dispose();
+                runningTaskCancellationTokenSource?.Dispose();
             }
 
             this._isRunning = false;
@@ -306,10 +332,23 @@ namespace Democrite.Framework.Configurations
         }
 
         /// <inheritdoc />
-        protected override ValueTask DisposeEndAsync()
+        protected override async ValueTask DisposeEndAsync()
         {
             this._locker.Dispose();
-            return base.DisposeEndAsync();
+
+            this._runningLinkedTokenSource?.Dispose();
+            this._runningTaskCancellationTokenSource?.Dispose();
+
+            // The host (and its root service provider : singletons, sockets, timers, ...) is owned, it MUST be disposed
+            if (this._hostOwned)
+            {
+                if (this._host is IAsyncDisposable asyncDisposableHost)
+                    await asyncDisposableHost.DisposeAsync();
+                else
+                    this._host.Dispose();
+            }
+
+            await base.DisposeEndAsync();
         }
 
         /// <summary>
@@ -348,11 +387,19 @@ namespace Democrite.Framework.Configurations
             {
                 await initTasks.SafeWhenAllAsync(token);
             }
-            //TO-DO from Opus 5.5 Service initialization failures silently swallowed : Init failures of IInitService are only logged, and the node or client keeps starting with uninitialized services; StopAsync similarly swallows everything via OnStopFailed. Rethrow, or fail the start, when initialization fails.
             catch (AggregateException ex)
             {
+                // Not rethrown to keep the start-up behavior, but each failure is logged as critical with its exception :
+                // the related services are NOT initialized
                 foreach (var inner in ex.InnerExceptions)
-                    this._logger.OptiLog(LogLevel.Critical, "Exceptions on INodeInitService : {exception}", inner);
+                    this._logger.LogCritical(inner, "IInitService initialization failed, service not initialized : {exception}", inner);
+
+                var notInitialized = beforeStartServices.Where(s => !s.IsInitialized)
+                                                        .Select(s => s.GetType().Name)
+                                                        .ToArray();
+
+                if (notInitialized.Length > 0)
+                    this._logger.LogCritical("IInitService not initialized : {services}", string.Join(", ", notInitialized));
             }
         }
 

@@ -138,10 +138,10 @@ namespace Democrite.Toolbox.Communications
             {
             }
 
+            /// <inheritdoc />
             public void OnError(Exception error)
             {
-                //TO-DO from Opus 5.5 Observer OnError throws NotImplementedException : Any error raised by the client proxy observable throws inside Rx and can tear down the subscription or crash the calling thread. Implement it by failing the pending requests with the error, as ClientProxy_ClientLeavedEvent already does.
-                throw new NotImplementedException();
+                this._comApiHandler.FailAllWaitingRequests(error);
             }
 
             /// <inheritdoc />
@@ -229,10 +229,21 @@ namespace Democrite.Toolbox.Communications
                 }
             }
 
-            await SendImpl(message, route, token, forceMessageId);
+            try
+            {
+                await SendImpl(message, route, token, forceMessageId);
 
-            //TO-DO from Opus 5.5 SendRequest can hang forever, entry leaks : The token is not applied while waiting for the response, so a lost reply blocks the caller indefinitely and the _waitingRequestResult entry is never removed. Use waitingResult.Task.WaitAsync(token) with a default timeout, and remove the entry in a finally block.
-            return await waitingResult.Task;
+                return await waitingResult.Task.WaitAsync(token);
+            }
+            finally
+            {
+                lock (this._locker)
+                {
+                    // Remove the entry only if it is still the one this call is waiting on
+                    if (this._waitingRequestResult.TryGetValue(forceMessageId.Value, out var current) && ReferenceEquals(current, waitingResult))
+                        this._waitingRequestResult.Remove(forceMessageId.Value);
+                }
+            }
         }
 
         #region Tools
@@ -376,6 +387,18 @@ namespace Democrite.Toolbox.Communications
         /// </summary>
         private void ClientProxy_ClientLeavedEvent(ComClientProxy obj)
         {
+            var exception = new WebException("Connection losted Uid " + this._clientProxy.Uid + " Endpoint " + obj.Endpoint);
+
+            FailAllWaitingRequests(exception);
+
+            this.ClientLeavedEvent?.Invoke(this);
+        }
+
+        /// <summary>
+        /// Fails all the requests waiting for a response with <paramref name="exception"/>
+        /// </summary>
+        private void FailAllWaitingRequests(Exception exception)
+        {
             ITaskCompletionSourceEx[] taskCompletionSourceExes;
             lock (this._locker)
             {
@@ -383,12 +406,8 @@ namespace Democrite.Toolbox.Communications
                 this._waitingRequestResult.Clear();
             }
 
-            var exception = new WebException("Connection losted Uid " + this._clientProxy.Uid + " Endpoint " + obj.Endpoint);
-
             foreach (var task in taskCompletionSourceExes)
                 task.TrySetException(exception);
-
-            this.ClientLeavedEvent?.Invoke(this);
         }
 
         /// <inheritdoc />

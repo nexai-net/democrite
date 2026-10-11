@@ -78,15 +78,28 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                 return Tuple.Create(boardId.Value, grainIdCached);
             }
 
+            var isNewBoard = boardId is null;
+
             boardId = this.State!.CreateNewBlackboardId(boardName, blackboardTemplateKey);
             var blackboardGrain = this._grainFactory.GetGrain<IBlackboardGrain>(boardId!.Value.Uid);
             var grainId = blackboardGrain.GetGrainId();
 
-            //TO-DO from Opus 5.5 Board registered before build succeeds : The cache entry and persisted state are committed before InitializaBlackboardGrainAsync runs. If BuildFromTemplateAsync fails, later calls return an unbuilt board, and a retry path could hit a duplicate-key Add. Register only after a successful build, or roll back on failure, and use the indexer or TryAdd.
-            this._grainIdCache.Add(boardId.Value, grainId);
+            try
+            {
+                await InitializaBlackboardGrainAsync(blackboardGrain, boardId.Value, blackboardTemplateKey, token, callContextId);
+            }
+            catch
+            {
+                // Build failed : roll back the registration of a new board to prevent returning an unbuilt board later
+                if (isNewBoard)
+                    this.State!.Unregister(boardId.Value.Uid);
+                throw;
+            }
+
+            // Register only after a successful build
+            this._grainIdCache[boardId.Value] = grainId;
             await PushStateAsync(default);
 
-            await InitializaBlackboardGrainAsync(blackboardGrain, boardId.Value, blackboardTemplateKey, token, callContextId);
             return Tuple.Create(boardId.Value, grainId);
         }
 
@@ -111,9 +124,14 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             Tuple<BlackboardId, GrainId>? result = null;
             var boardId = this.State!.TryGetAsync(uid);
 
-            //TO-DO from Opus 5.5 Lookup by uid fails after registry reactivation : _grainIdCache lives only in memory and is filled only by GetOrCreateAsync. After a silo restart or registry reactivation, TryGetAsync(uid) returns null for persisted boards, which breaks GetBlackboardAsync(uid) and controller initialization. Derive the GrainId from the uid (GetGrain<IBlackboardGrain>(uid).GetGrainId()) instead of relying on the cache.
-            if (boardId is not null && this._grainIdCache.TryGetValue(boardId.Value, out var grainId))
+            if (boardId is not null)
+            {
+                // The cache is in memory only, after registry reactivation derive the grain id from the persisted board uid
+                if (!this._grainIdCache.TryGetValue(boardId.Value, out var grainId))
+                    grainId = this._grainFactory.GetGrain<IBlackboardGrain>(boardId.Value.Uid).GetGrainId();
+
                 result = Tuple.Create(boardId.Value, grainId);
+            }
 
             return Task.FromResult(result);
         }

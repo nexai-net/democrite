@@ -106,15 +106,38 @@ namespace Democrite.Framework.Core.Abstractions.Doors
         {
             return otherDoor is BooleanLogicalDoorDefinition otherLogicalDoor &&
                    this.LogicalFormula == otherLogicalDoor.LogicalFormula &&
-                   this.VariableNames.SequenceEqual(otherLogicalDoor.VariableNames) &&
+                   VariableNamesEquals(this.VariableNames, otherLogicalDoor.VariableNames) &&
                    this.UseCurrentDoorStatus == otherLogicalDoor.UseCurrentDoorStatus;
         }
 
         /// <inheritdoc />
         protected override int OnDoorGetHashCode()
         {
-            //TO-DO from Opus 5.5 GetHashCode inconsistent with Equals : Equals compares VariableNames by content but the hash uses the dictionary reference, so equal doors get different hashes (broken in HashSet/Dictionary); SequenceEqual on a dictionary is also order dependent. Hash and compare the dictionary entries order-independently.
-            return HashCode.Combine(this.LogicalFormula, this.VariableNames, this.UseCurrentDoorStatus);
+            var variableNamesHash = 0;
+            foreach (var kv in this.VariableNames)
+                variableNamesHash ^= HashCode.Combine(kv.Key, kv.Value);
+
+            return HashCode.Combine(this.LogicalFormula, variableNamesHash, this.UseCurrentDoorStatus);
+        }
+
+        /// <summary>
+        /// Compare variable names dictionaries content, independently of the entries order
+        /// </summary>
+        private static bool VariableNamesEquals(IReadOnlyDictionary<string, Guid> source, IReadOnlyDictionary<string, Guid> other)
+        {
+            if (object.ReferenceEquals(source, other))
+                return true;
+
+            if (source.Count != other.Count)
+                return false;
+
+            foreach (var kv in source)
+            {
+                if (!other.TryGetValue(kv.Key, out var otherValue) || otherValue != kv.Value)
+                    return false;
+            }
+
+            return true;
         }
 
         #endregion

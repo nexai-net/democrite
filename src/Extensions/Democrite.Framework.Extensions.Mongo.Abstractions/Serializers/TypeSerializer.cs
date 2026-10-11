@@ -43,9 +43,15 @@ namespace Democrite.Framework.Extensions.Mongo.Abstractions.Serializers
         /// <inheritdoc />
         public object? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
         {
-            //TO-DO from Opus 5.5 Null Type not consumed; arbitrary type loading : When the value is BSON null (which Serialize writes for null), Deserialize returns without calling ReadNull/SkipValue, so the reader goes out of sync and the rest of the document is corrupted. Type.GetType on database content also loads arbitrary types. Consume the null value, and resolve types against an allow-list.
+            //TO-DO from Opus 5.5 Null Type not consumed; arbitrary type loading : Type.GetType on database content loads arbitrary types. Resolve types against an allow-list.
             if (context.Reader.CurrentBsonType == MongoDB.Bson.BsonType.String)
                 return Type.GetType(context.Reader.ReadString());
+
+            // Always consume the current value to keep the reader in sync
+            if (context.Reader.CurrentBsonType == MongoDB.Bson.BsonType.Null)
+                context.Reader.ReadNull();
+            else
+                context.Reader.SkipValue();
 
             return null;
         }

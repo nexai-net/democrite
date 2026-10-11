@@ -10,7 +10,6 @@ namespace Democrite.Toolbox.WPF.UI.Services
     using Democrite.Toolbox.WPF.Abstractions.Services;
 
     using System;
-    using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.IO.Compression;
@@ -62,41 +61,48 @@ namespace Democrite.Toolbox.WPF.UI.Services
         #region Methods
 
         /// <inheritdoc />
-        public async Task<RemoteExecResultRemoteExecResult> ExecuteAsync(CancellationToken token, params string[] arguments)
+        public async Task<RemoteExecResult> ExecuteAsync(CancellationToken token, params string[] arguments)
         {
             await InstallPkgAsync(token);
 
             var execPath = Path.Combine(this._installPath, this._executableName);
 
-            var proc = new Process();
+            using var proc = new Process();
             string logs = string.Empty;
             string errors = string.Empty;
             Exception? exception = null;
+            int? exitCode = null;
+            bool started = false;
 
             try
             {
                 proc.StartInfo.FileName = execPath;
-                proc.StartInfo.Arguments = string.Join(" ", arguments);
+
+                foreach (var arg in arguments ?? Array.Empty<string>())
+                    proc.StartInfo.ArgumentList.Add(arg);
 
                 proc.StartInfo.RedirectStandardError = true;
                 proc.StartInfo.RedirectStandardOutput = true;
 
                 proc.StartInfo.UseShellExecute = false;
                 proc.StartInfo.CreateNoWindow = true;
-                var consoleOutput = new Queue<string>();
-
-                proc.ErrorDataReceived += (d, e) => consoleOutput.Enqueue("INFO:" + (e.Data ?? string.Empty));
-                proc.OutputDataReceived += (d, e) => consoleOutput.Enqueue("ERROR:" + (e.Data ?? string.Empty));
 
                 token.ThrowIfCancellationRequested();
 
                 if (proc.Start())
                 {
-                    //TO-DO from Opus 5.5 Redirected output read after exit deadlocks : stdout and stderr are redirected but only read after the process exits. When a child writes more than the pipe buffer, it blocks forever and so does this call (the classic Process deadlock). Read both streams concurrently (start the ReadToEndAsync tasks before waiting, or use BeginOutputReadLine/BeginErrorReadLine).
+                    started = true;
+
+                    // Read both redirected streams concurrently before waiting the exit to prevent pipe buffer dead lock
+                    var logsTask = proc.StandardOutput.ReadToEndAsync(token);
+                    var errorsTask = proc.StandardError.ReadToEndAsync(token);
+
                     await proc.WaitForExitAsync(token);
 
-                    logs = await proc.StandardOutput.ReadToEndAsync(token);
-                    errors = await proc.StandardError.ReadToEndAsync(token);
+                    logs = await logsTask;
+                    errors = await errorsTask;
+
+                    exitCode = proc.ExitCode;
                 }
 
                 token.ThrowIfCancellationRequested();
@@ -104,14 +110,30 @@ namespace Democrite.Toolbox.WPF.UI.Services
             catch (Exception ex)
             {
                 exception = ex;
+
+                // Do not leave an orphan process running on cancellation or failure
+                if (started)
+                {
+                    try
+                    {
+                        if (!proc.HasExited)
+                            proc.Kill(true);
+                    }
+                    catch
+                    {
+                        // Process may have exited meanwhile
+                    }
+                }
             }
 
-            //TO-DO from Opus 5.5 ExitCode access throws when start failed : If Start throws or is cancelled, proc.ExitCode throws InvalidOperationException outside the try block, which defeats the error capture. The Process is also never disposed, and arguments are joined with spaces and no quoting (line 79). Guard ExitCode, wrap the Process in `using`, and use StartInfo.ArgumentList.
-            return new RemoteExecResultRemoteExecResult(proc.ExitCode == 0,
-                                                        logs,
-                                                        errors,
-                                                        proc.ExitCode,
-                                                        exception?.GetFullString() ?? string.Empty);
+            // -1 : process not started or not exited normally
+            var finalExitCode = exitCode ?? -1;
+
+            return new RemoteExecResult(exception is null && finalExitCode == 0,
+                                        logs,
+                                        errors,
+                                        finalExitCode,
+                                        exception?.GetFullString() ?? string.Empty);
         }
 
         /// <summary>
@@ -122,45 +144,92 @@ namespace Democrite.Toolbox.WPF.UI.Services
             if (this._fileSystemHandler.Exists(this._execPathUri))
                 return;
 
-            //TO-DO from Opus 5.5 Downloaded executable run without integrity check : The binary is downloaded (possibly over HTTP) and executed with no hash or signature check. On an HTTP error an empty array is written as the executable, and because the file now exists it is never re-downloaded. Zip extraction errors are also swallowed. Verify a checksum, fail on a non-success status, pass the CancellationToken through, and do not persist empty or partial files.
-            var bytes = await GetBytesFromUriAsync(this._uri);
+            //TO-DO from Opus 5.5 Downloaded executable run without integrity check : The binary is downloaded (possibly over HTTP) and executed with no hash or signature check. Remaining: verify a checksum/signature, this requires an expected hash source (new constructor parameter or companion file) to be decided.
+            var bytes = await GetBytesFromUriAsync(this._uri, token);
+
+            if (bytes.Length == 0)
+                throw new InvalidDataException("Empty content downloaded for tool '" + this._toolName + "' from " + this._uri);
+
+            token.ThrowIfCancellationRequested();
 
             if (ExtractZipFileIfCan(bytes, this._installPath))
                 return;
 
-            //#warning TODO : Move file write to Toolbox IFileSystemHandler
-            //            await File.WriteAllBytesAsync(this._execPathUri.OriginalString, bytes);
-            await this._fileSystemHandler.WriteToFileAsync(bytes, this._execPathUri, @override: true, token: token);
+            bool written = false;
+            try
+            {
+                written = await this._fileSystemHandler.WriteToFileAsync(bytes, this._execPathUri, @override: true, token: token);
+            }
+            finally
+            {
+                // Never keep a partial executable, otherwise it will never be downloaded again
+                if (!written)
+                {
+                    try
+                    {
+                        await this._fileSystemHandler.Delete(this._execPathUri);
+                    }
+                    catch
+                    {
+                        // Best effort cleanup, keep the original error
+                    }
+                }
+            }
+
+            if (!written)
+                throw new IOException("Failed to write tool '" + this._toolName + "' executable to " + this._execPathUri);
         }
 
         /// <summary>
         /// Extracts the zip file if can.
         /// </summary>
-        private bool ExtractZipFileIfCan(byte[] bytes, string installPath)
+        /// <returns><c>true</c> if <paramref name="bytes"/> is a zip archive that have been extracted; <c>false</c> if it is not a zip archive</returns>
+        private static bool ExtractZipFileIfCan(byte[] bytes, string installPath)
         {
-            try
+            using (var stream = new MemoryStream(bytes))
             {
-                using (var stream = new MemoryStream(bytes))
+                ZipArchive zip;
+                try
                 {
-                    var zip = new ZipArchive(stream, ZipArchiveMode.Read);
-                    var entries = zip.Entries;
-
-                    zip.ExtractToDirectory(installPath);
-                    return true;
+                    zip = new ZipArchive(stream, ZipArchiveMode.Read);
                 }
-            }
-            catch (Exception ex)
-            {
-#warning LOG ERROR
-            }
+                catch (InvalidDataException)
+                {
+                    // Not a zip archive
+                    return false;
+                }
 
-            return false;
+                using (zip)
+                {
+                    try
+                    {
+                        zip.ExtractToDirectory(installPath);
+                    }
+                    catch
+                    {
+                        // Do not keep a partial extraction
+                        try
+                        {
+                            if (Directory.Exists(installPath))
+                                Directory.Delete(installPath, true);
+                        }
+                        catch
+                        {
+                            // Best effort cleanup
+                        }
+
+                        throw;
+                    }
+                }
+
+                return true;
+            }
         }
 
         /// <summary>
         /// Gets the bytes from URI asynchronous.
         /// </summary>
-        private async Task<byte[]> GetBytesFromUriAsync(Uri uri)
+        private async Task<byte[]> GetBytesFromUriAsync(Uri uri, CancellationToken token)
         {
             if (uri.IsFile)
             {
@@ -172,16 +241,12 @@ namespace Democrite.Toolbox.WPF.UI.Services
 
             using (var client = new HttpClient())
             {
-                using (var result = await client.GetAsync(uri))
+                using (var result = await client.GetAsync(uri, token))
                 {
-                    if (result.IsSuccessStatusCode)
-                    {
-                        return await result.Content.ReadAsByteArrayAsync();
-                    }
+                    result.EnsureSuccessStatusCode();
+                    return await result.Content.ReadAsByteArrayAsync(token);
                 }
             }
-
-            return EnumerableHelper<byte>.ReadOnlyArray;
         }
 
         #endregion

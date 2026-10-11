@@ -49,10 +49,10 @@ namespace Democrite.Framework
         {
             if (this._clientDeco)
             {
-                //TO-DO from Opus 5.5 Client reconnect never happens after stop : GetServices returns IEnumerable<IClusterClient>, so the 'as IHostedService' cast is always null and StartAsync is never called on the cluster client after TryStopHostAsync. Use GetRequiredService<IClusterClient>() as in TryStopHostAsync, and reset _clientDeco after a successful restart.
-                var connectionService = this.Services.GetServices<IClusterClient>() as IHostedService;
+                var connectionService = this.Services.GetRequiredService<IClusterClient>() as IHostedService;
 
                 await (connectionService?.StartAsync(token) ?? Task.CompletedTask);
+                this._clientDeco = false;
                 return;
             }
 
@@ -74,8 +74,7 @@ namespace Democrite.Framework
         protected override async ValueTask DisposeBeginAsync()
         {
             await base.DisposeBeginAsync();
-            // Force host to stop on dispose
-            //TO-DO from Opus 5.5 Owned IHost is stopped but never disposed : The client (and DemocriteBasePart) owns the IHost but only stops it on dispose; the host and its root service provider (singletons, sockets, timers) are never disposed. Call _host.Dispose() when hostOwned during DisposeEndAsync, and dispose the linked CTSs created in StartAsync and StartUntilEndAsync.
+            // Force host to stop on dispose (owned host is disposed by DemocriteBasePart.DisposeEndAsync)
             await base.TryStopHostAsync(default);
         }
 

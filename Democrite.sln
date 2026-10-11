@@ -11,7 +11,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{3AD8F8
 		.runsettings = .runsettings
 		Directory.Packages.props = Directory.Packages.props
 		SampleFullConfiguration.json = SampleFullConfiguration.json
-		SharedFrameworkAssmblyInfo.props = SharedFrameworkAssmblyInfo.props
+		SharedFrameworkAssemblyInfo.props = SharedFrameworkAssemblyInfo.props
 		SharedFrameworkDemocriteAssemblyInfo.props = SharedFrameworkDemocriteAssemblyInfo.props
 	EndProjectSection
 EndProject

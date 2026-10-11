@@ -91,20 +91,31 @@ namespace Democrite.Toolbox.UnitTests.Helpers
         /// <summary>
         /// Test <see cref="CancellationHelper.Timeout(TimeSpan?)"/> correcly cancel the token after the time asked
         /// </summary>
-        //TO-DO from Opus 5.5 Timeout safety test is skipped : The only test for CancellationHelper.Timeout is disabled because its wall-clock bounds were flaky. It also passes an async lambda to ThatCode instead of ThatAsyncCode. Re-enable it using an injectable TimeProvider (FakeTimeProvider) or wide bounds, and await the asynchronous check.
-        [Fact(Timeout = 5000, Skip = "To variable")] // Security test MUST exist normally on the time setups
+        /// <remarks>
+        ///     Only machine-independent bounds are checked : the token is never cancelled BEFORE the requested delay
+        ///     (minus the OS timer resolution) and it IS cancelled eventually (wide bounded wait, no fixed upper wall-clock bound).
+        /// </remarks>
+        [Fact] // Security test MUST exist normally on the time setups
         public async Task CancellationHelper_Timeout()
         {
-            var stopwatch = new Stopwatch();
+            var requestedTimeout = TimeSpan.FromMilliseconds(300);
 
-            stopwatch.Start();
-            Check.ThatCode(async () => await Task.Delay(Timeout.Infinite, CancellationHelper.Timeout(TimeSpan.FromMilliseconds(1_000)))).Throws<OperationCanceledException>();
-            stopwatch.Stop();
+            var stopwatch = Stopwatch.StartNew();
+            var token = CancellationHelper.Timeout(requestedTimeout);
 
-            // Mainly if it got to this line the cancellation work
-            Check.That(stopwatch.ElapsedMilliseconds).IsGreaterOrEqualThan(900).And.IsLessOrEqualThan(4_000);
+            var cancelled = new TaskCompletionSource<TimeSpan>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (token.Register(() => cancelled.TrySetResult(stopwatch.Elapsed)))
+            {
+                // Bounded wait : fails instead of hanging if the token is never cancelled
+                var cancelledAfter = await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-            await Task.CompletedTask;
+                Check.That(token.IsCancellationRequested).IsTrue();
+
+                // Timer resolution tolerance (Windows default timer tick ~15.6 ms)
+                Check.That(cancelledAfter.TotalMilliseconds).IsGreaterOrEqualThan((requestedTimeout - TimeSpan.FromMilliseconds(50)).TotalMilliseconds);
+            }
+
+            Check.ThatAsyncCode(async () => await Task.Delay(Timeout.Infinite, token)).Throws<TaskCanceledException>();
         }
     }
 }

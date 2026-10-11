@@ -49,6 +49,14 @@ namespace Democrite.Toolbox.WPF.UI.Controls
             get { return (ICommand)GetValue(CloseCommandProperty); }
         }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the <see cref="FrameworkElement.DataContext"/> is disposed when the window is closed.
+        /// </summary>
+        /// <remarks>
+        ///     Set to <c>false</c> by view managers that own the view model lifetime (persistent view models)
+        /// </remarks>
+        public bool DisposeDataContextOnClosed { get; set; } = true;
+
         #endregion
 
         #region Methods
@@ -59,8 +67,7 @@ namespace Democrite.Toolbox.WPF.UI.Controls
         /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
         protected override void OnClosed(EventArgs e)
         {
-            //TO-DO from Opus 5.5 Window disposes persistent view models : OnClosed unconditionally disposes the DataContext, bypassing BaseViewManager.ViewClosed, so a view model registered as Persistant is disposed and then reused on the next navigation. Let the view manager own the view-model lifetime, or make this behavior opt-in.
-            if (this.DataContext is IDisposable disposable)
+            if (this.DisposeDataContextOnClosed && this.DataContext is IDisposable disposable)
                 disposable.Dispose();
 
             base.OnClosed(e);

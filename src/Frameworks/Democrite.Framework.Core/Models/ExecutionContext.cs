@@ -14,6 +14,7 @@ namespace Democrite.Framework.Core.Models
     using Orleans.Runtime;
 
     using System;
+    using System.Collections.Immutable;
     using System.ComponentModel;
     using System.Diagnostics;
     using System.Diagnostics.Metrics;
@@ -33,8 +34,7 @@ namespace Democrite.Framework.Core.Models
     {
         #region Fields
 
-        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "Cancel")]
-        private static extern ref Task GrainTokenCancel(GrainCancellationToken token);
+        private static readonly MethodInfo s_grainTokenCancelMthd;
 
         private static readonly Dictionary<Type, FieldInfo> s_grainReferenceRuntimeCache;
         private static readonly ReaderWriterLockSlim s_grainReferenceRuntimeCacheLocker;
@@ -46,8 +46,9 @@ namespace Democrite.Framework.Core.Models
         private static readonly MethodInfo s_addGrainCancelReference;
         private static readonly PropertyInfo s_propGrainRuntime;
 
-        //TO-DO from Opus 5.5 Mutable HashSet inside [Immutable] context : The class is marked [Immutable], so Orleans shares the same instance without copying between local grains, yet TryPushContextData and ClearContextData mutate this non-thread-safe HashSet. That causes cross-grain data leaks and races. Make the container immutable (ImmutableHashSet with copy-on-write) or remove [Immutable].
-        private readonly HashSet<IContextDataContainer> _contextDataContainers;
+        // Copy-on-write immutable set : instance may be shared between local grains ([Immutable]) so never mutate the set in place
+        private readonly object _contextDataLocker = new object();
+        private volatile ImmutableHashSet<IContextDataContainer> _contextDataContainers;
 
         [NonSerialized]
         private GrainCancellationToken? _grainCancelToken;
@@ -75,6 +76,10 @@ namespace Democrite.Framework.Core.Models
             Debug.Assert(addGrainCancelReference != null);
             s_addGrainCancelReference = addGrainCancelReference;
 
+            var grainTokenCancel = typeof(GrainCancellationToken).GetMethod("Cancel", BindingFlags.NonPublic | BindingFlags.Instance, Type.EmptyTypes);
+            Debug.Assert(grainTokenCancel != null);
+            s_grainTokenCancelMthd = grainTokenCancel;
+
             s_rwMethodCache = new ReaderWriterLockSlim();
             s_grainReferenceRuntimeCacheLocker = new ReaderWriterLockSlim();
         }
@@ -93,7 +98,7 @@ namespace Democrite.Framework.Core.Models
             this.CurrentExecutionId = currentExecutionId;
             this.ParentExecutionId = parentExecutionId;
 
-            this._contextDataContainers = new HashSet<IContextDataContainer>();
+            this._contextDataContainers = ImmutableHashSet<IContextDataContainer>.Empty;
         }
 
         /// <summary>
@@ -112,7 +117,7 @@ namespace Democrite.Framework.Core.Models
             this.CurrentExecutionId = currentExecutionId;
             this.ParentExecutionId = parentExecutionId;
 
-            this._contextDataContainers = new HashSet<IContextDataContainer>();
+            this._contextDataContainers = ImmutableHashSet<IContextDataContainer>.Empty;
         }
 
         #endregion
@@ -265,48 +270,63 @@ namespace Democrite.Framework.Core.Models
             where TContextData : struct
         {
             var trait = typeof(TContextData);
-            var exist = this._contextDataContainers.FirstOrDefault(c => c.IsMatch(trait));
 
-            if (exist is not null)
+            lock (this._contextDataLocker)
             {
-                if (!@override)
-                    return false;
+                var containers = this._contextDataContainers;
+                var exist = containers.FirstOrDefault(c => c.IsMatch(trait));
 
-                this._contextDataContainers.Remove(exist);
+                if (exist is not null)
+                {
+                    if (!@override)
+                        return false;
+
+                    containers = containers.Remove(exist);
+                }
+
+                var newData = ContextDataContainer<TContextData>.Create(contextData, serializer);
+                this._contextDataContainers = containers.Add(newData);
+                return true;
             }
-
-            var newData = ContextDataContainer<TContextData>.Create(contextData, serializer);
-            this._contextDataContainers.Add(newData);
-            return true;
         }
 
         /// <inheritdoc />
         public bool TryPushContextData(IContextDataContainer contextDataContainer, bool @override)
         {
-            var exist = this._contextDataContainers.FirstOrDefault(c => c.IsMatch(contextDataContainer));
-
-            if (exist is not null)
+            lock (this._contextDataLocker)
             {
-                if (!@override)
-                    return false;
+                var containers = this._contextDataContainers;
+                var exist = containers.FirstOrDefault(c => c.IsMatch(contextDataContainer));
 
-                this._contextDataContainers.Remove(exist);
+                if (exist is not null)
+                {
+                    if (!@override)
+                        return false;
+
+                    containers = containers.Remove(exist);
+                }
+
+                this._contextDataContainers = containers.Add(contextDataContainer);
+                return true;
             }
-
-            this._contextDataContainers.Add(contextDataContainer);
-            return true;
         }
 
         /// <inheritdoc />
         public void ClearContextData()
         {
-            this._contextDataContainers.Clear();
+            lock (this._contextDataLocker)
+            {
+                this._contextDataContainers = ImmutableHashSet<IContextDataContainer>.Empty;
+            }
         }
 
         /// <inheritdoc />
         public void ClearContextData(Type dataType)
         {
-            this._contextDataContainers.RemoveWhere(c => c.IsMatch(dataType));
+            lock (this._contextDataLocker)
+            {
+                this._contextDataContainers = this._contextDataContainers.Except(this._contextDataContainers.Where(c => c.IsMatch(dataType)));
+            }
         }
 
         /// <inheritdoc />
@@ -337,17 +357,52 @@ namespace Democrite.Framework.Core.Models
         /// <inheritdoc />
         internal void InjectAllDataContext(IReadOnlyCollection<IContextDataContainer> contextDataContainers)
         {
-            this._contextDataContainers.Clear();
-
-            foreach (var data in contextDataContainers)
-                this._contextDataContainers.Add(data);
+            lock (this._contextDataLocker)
+            {
+                this._contextDataContainers = ImmutableHashSet.CreateRange(contextDataContainers);
+            }
         }
 
         /// <inheritdoc cref="IExecutionContext.GetLogger{T}(ILoggerProvider)" />
         private static ILogger GetLogger(ILoggerFactory loggerFactory, Guid flowUid, Guid currentExecutionId, string category)
         {
-            //TO-DO from Opus 5.5 Unbounded logger cache per execution : LoggerFactory caches one logger per category name forever, and this category contains a unique flow id and execution id, so every execution adds a permanent entry and memory grows without bound. Use a stable category (the type name) and put flow and execution ids in a logging scope or as structured properties.
-            return loggerFactory.CreateLogger(string.Format("[Flow {0}][VGrain {1} - {2}]", flowUid, currentExecutionId, category));
+            // Use a stable category (LoggerFactory caches one logger per category forever) and prefix messages with flow/execution ids
+            return new ExecutionPrefixLogger(loggerFactory.CreateLogger(category),
+                                             string.Format("[Flow {0}][VGrain {1} - {2}]", flowUid, currentExecutionId, category));
+        }
+
+        /// <summary>
+        /// Logger wrapper that prefixes every message with execution information
+        /// </summary>
+        private sealed class ExecutionPrefixLogger : ILogger
+        {
+            private readonly ILogger _inner;
+            private readonly string _prefix;
+
+            public ExecutionPrefixLogger(ILogger inner, string prefix)
+            {
+                this._inner = inner;
+                this._prefix = prefix;
+            }
+
+            /// <inheritdoc />
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+            {
+                return this._inner.BeginScope(state);
+            }
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return this._inner.IsEnabled(logLevel);
+            }
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                var prefix = this._prefix;
+                this._inner.Log(logLevel, eventId, state, exception, (s, e) => prefix + " " + formatter(s, e));
+            }
         }
 
         /// <inheritdoc />
@@ -356,9 +411,10 @@ namespace Democrite.Framework.Core.Models
             ArgumentNullException.ThrowIfNull(this._grainCancelToken, "IExecutionContextInternal.AddCancelGrainReference(GrainReference grainRef) must be call before any other call");
             //Task.Run(async () => await GrainTokenCancel(this._grainCancelToken));
 
-            //TO-DO from Opus 5.5 Cancel ignores returned Task, reflects each call : GrainCancellationToken.Cancel returns a Task that propagates cancellation to remote grains, but it is discarded, so failures are lost and the ValueTask completes before cancellation propagates. The MethodInfo is also looked up on every call. Cache the method, or fix the unused UnsafeAccessor, and await the returned Task.
-            var cancel = typeof(GrainCancellationToken).GetMethod("Cancel", BindingFlags.NonPublic | BindingFlags.Instance);
-            cancel!.Invoke(this._grainCancelToken, new object[0]);
+            // Return the propagation task to let caller await remote grain cancellation and observe failures
+            if (s_grainTokenCancelMthd.Invoke(this._grainCancelToken, null) is Task cancelTask)
+                return new ValueTask(cancelTask);
+
             return ValueTask.CompletedTask;
         }
 

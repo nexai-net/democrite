@@ -26,6 +26,7 @@ namespace Democrite.UnitTests.ToolKit.Services
 
         private readonly ConcurrentBag<IDiagnosticLog> _logs;
         private long _logCounter;
+        private TaskCompletionSource _logReceivedSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         #endregion
 
@@ -65,16 +66,65 @@ namespace Democrite.UnitTests.ToolKit.Services
             this._logs.Add(log);
             Interlocked.Increment(ref this._logCounter);
 
+            // Wake up every pending WaitLogsAsync and arm a new signal for the next log
+            Interlocked.Exchange(ref this._logReceivedSignal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+                       .TrySetResult();
+
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Wait (deterministically) until at least <paramref name="expectedLogCount"/> logs have been received.
+        /// </summary>
+        /// <exception cref="TimeoutException">Raised if the expected count is not reached before <paramref name="timeout"/></exception>
+        public Task FlushAsync(long expectedLogCount, TimeSpan timeout, CancellationToken token = default)
+        {
+            return WaitLogsAsync(_ => Interlocked.Read(ref this._logCounter) >= expectedLogCount, timeout, token);
+        }
+
+        /// <summary>
+        /// Wait (deterministically) until the received logs match <paramref name="endOfFlowCondition"/>
+        /// (expected end-of-flow log, expected count, ...).
+        /// </summary>
+        /// <exception cref="TimeoutException">Raised if the condition is not reached before <paramref name="timeout"/></exception>
+        public async Task WaitLogsAsync(Func<IReadOnlyCollection<IDiagnosticLog>, bool> endOfFlowCondition, TimeSpan timeout, CancellationToken token = default)
+        {
+            ArgumentNullException.ThrowIfNull(endOfFlowCondition);
+
+            using (var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                timeoutSource.CancelAfter(timeout);
+
+                while (true)
+                {
+                    // Capture the signal BEFORE checking the condition to never miss a log received in between
+                    var signal = Volatile.Read(ref this._logReceivedSignal);
+
+                    if (endOfFlowCondition(this._logs))
+                        return;
+
+                    try
+                    {
+                        await signal.Task.WaitAsync(timeoutSource.Token);
+                    }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                    {
+                        if (endOfFlowCondition(this._logs))
+                            return;
+
+                        throw new TimeoutException("Expected diagnostic logs not received after " + timeout + " (received " + Interlocked.Read(ref this._logCounter) + ")");
+                    }
+                }
+            }
         }
 
         /// <summary>
         /// Ensure all log have been received
         /// </summary>
         /// <remarks>
-        ///     Use time wetween last log received
+        ///     Heuristic : use time between last log received.
+        ///     Prefer <see cref="FlushAsync(long, TimeSpan, CancellationToken)"/> or <see cref="WaitLogsAsync"/> that wait for an explicit end-of-flow condition.
         /// </remarks>
-        //TO-DO from Opus 5.5 Log flush relies on quiet-period heuristic : FlushAsync treats 500 ms without a new log as the end of the flow, so slow CI agents can return before all logs arrive, which makes the FlowValidator-based tests flaky. Wait for an explicit end-of-flow log or an expected log count, with a timeout.
         public async Task FlushAsync(CancellationToken token)
         {
             long logCount;

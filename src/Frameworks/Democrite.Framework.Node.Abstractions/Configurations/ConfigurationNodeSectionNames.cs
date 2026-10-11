@@ -23,7 +23,7 @@ namespace Democrite.Framework.Configurations
                                           ConfigurationSectionNames.SectionSeparator +
                                           NodeSpecificSection +
                                           ConfigurationSectionNames.SectionSeparator +
-                                          ClusterNodeDiagnosticOptions.ConfiguratioName;
+                                          ClusterNodeDiagnosticOptions.ConfigurationName;
 
         /// <summary>
         /// The root section in change to configured the storages memberships, vgrain states, reminder, timers ...
@@ -63,8 +63,7 @@ namespace Democrite.Framework.Configurations
         /// <summary>
         /// The section configuring auto key for all memory when misisin
         /// </summary>
-        //TO-DO from Opus 5.5 Missing section separator in config key : Unlike NodeDefaultMemoryAutoConfigKey, this constant joins the parts with no SectionSeparator and so builds a wrong key such as '...:DefaultAutoConfig'. DemocriteNodeBuilder reads it at two places, so the default-memory auto-config section is never found. Add the separator, or remove this duplicate and use NodeDefaultMemoryAutoConfigKey.
-        public const string NodeMemoryDefaultAutoConfigKey = NodeDefaultMemory + ConfigurationSectionNames.AutoConfigKey;
+        public const string NodeMemoryDefaultAutoConfigKey = NodeDefaultMemory + ConfigurationSectionNames.SectionSeparator + ConfigurationSectionNames.AutoConfigKey;
 
         /// <summary>
         /// The section configuring the custom memory storage

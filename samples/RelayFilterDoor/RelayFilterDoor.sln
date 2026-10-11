@@ -7,7 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{73E40F
 	ProjectSection(SolutionItems) = preProject
 		Directory.Packages.props = Directory.Packages.props
 		Readme.md = Readme.md
-		SharedFrameworkAssmblyInfo.props = SharedFrameworkAssmblyInfo.props
+		SharedFrameworkAssemblyInfo.props = SharedFrameworkAssemblyInfo.props
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayFilterDoor.Console", "RelayFilterDoor.Console\RelayFilterDoor.Console.csproj", "{95A4F442-8661-4578-8527-6BCDE421FA63}"

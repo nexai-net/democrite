@@ -5,6 +5,7 @@ import base64
 import socket
 import struct
 import codecs
+import threading
 import concurrent.futures
 
 from abc import ABC, abstractmethod 
@@ -68,11 +69,11 @@ def democrite_verbose_print(message:str, level:VerboseLevel, expectedLevel:Verbo
 
 def democrite_any_to_base_64_string(data:any):
     data_str = data
-    #TO-DO from Opus 5.5 Identity check against object never true : 'data is object' compares identity with the builtin class and is always False, so dicts and lists are sent as str() Python repr (single quotes, True/None) that the .NET side cannot parse as JSON; the same bug is at line 241 in _remoteLogger.log. Use 'if not isinstance(data, str): data_str = json.dumps(data)'.
-    if (data is object):
-        data_str = json.dumps(data)
-    else:
-        data_str = str(data)
+    if (not isinstance(data, str)):
+        try:
+            data_str = json.dumps(data)
+        except (TypeError, ValueError):
+            data_str = str(data)
     return base64.b64encode(data_str.encode("utf-8")).decode('utf-8')
 
 class _remoteCommandServer:
@@ -82,6 +83,17 @@ class _remoteCommandServer:
         self._callback = callback
         self._verboseLevel = verboseLevel
         self._executor = concurrent.futures.ThreadPoolExecutor()
+        self._sendLock = threading.Lock()
+
+    def __private__recv_exact(self, size:int):
+        """ Read exactly size bytes from the socket, return None if the connection is closed before """
+        buffer = bytearray()
+        while (len(buffer) < size):
+            chunk = self._socket.recv(size - len(buffer))
+            if (not chunk):
+                return None
+            buffer += chunk
+        return bytes(buffer)
 
     def __private__sendResponse_with_message_type(self, id:str, result: str, messageType: _messageType):
         finalData = struct.pack("!B", messageType)
@@ -90,9 +102,10 @@ class _remoteCommandServer:
         if(result is not None):
             finalData += codecs.utf_8_encode(result)[0] 
 
-        fullFinalData = struct.pack("H", len(finalData)) + finalData
-        #TO-DO from Opus 5.5 Concurrent partial socket sends corrupt frames : Responses and logs are sent from several ThreadPoolExecutor threads with no lock, and socket.send may write only part of the buffer, so frames can interleave or be truncated. Guard the send with a threading.Lock and use sendall.
-        self._socket.send(fullFinalData)
+        # Length prefix in little-endian to match the .NET side (BitConverter)
+        fullFinalData = struct.pack("<H", len(finalData)) + finalData
+        with self._sendLock:
+            self._socket.sendall(fullFinalData)
 
     def __private__executeCommand_async(self, msgid:str, compressedCmd:str):
         try:
@@ -120,16 +133,16 @@ class _remoteCommandServer:
             
             try:
 
-                pkgSizeArrayBytes = self._socket.recv(2)
+                pkgSizeArrayBytes = self.__private__recv_exact(2)
 
-                if (len(pkgSizeArrayBytes) < 2):
+                if (pkgSizeArrayBytes is None):
                     break;
 
-                pkgSize = int(struct.unpack("H", pkgSizeArrayBytes)[0]);
+                # Length prefix in little-endian to match the .NET side (BitConverter)
+                pkgSize = int(struct.unpack("<H", pkgSizeArrayBytes)[0]);
 
-                #TO-DO from Opus 5.5 Single recv treated as full TCP frame : TCP recv may return fewer bytes than requested (this also applies to the 2-byte header), and a short read currently breaks the loop and stops the server. Add a recv_exact helper that loops until pkgSize bytes are read, and use explicit network byte order ('!H') in both pack and unpack so the length is not limited by native byte order.
-                containerData = self._socket.recv(pkgSize)
-                if (len(containerData) < pkgSize):
+                containerData = self.__private__recv_exact(pkgSize)
+                if (containerData is None):
                     break;
             
                 msgType = containerData[0]
@@ -241,8 +254,11 @@ class _remoteLogger(loggerBase):
     def log(self, level:LogLevel, message):
 
         message_str = message
-        if (message is object):
-            message_str = json.dumps(message)
+        if (not isinstance(message, str)):
+            try:
+                message_str = json.dumps(message)
+            except (TypeError, ValueError):
+                message_str = str(message)
 
         message_str = base64.b64encode(message_str.encode("utf-8")).decode('utf-8')
 
@@ -287,6 +303,7 @@ class vgrain:
         self._remotePort = -1
         self._globalVerbose = VerboseLevel.MINIMAL
         self._configs = dict()
+        self._command = None
 
         # Search in arguments the command information "--cmd:'CMD_JSON_BASE64'"
         argCopy = args.copy();
@@ -333,7 +350,7 @@ class vgrain:
                     # don't process this arg
                     continue;
 
-                splitArgCfg = remainConfig.index("=")
+                splitArgCfg = remainConfig.find("=")
                 if (splitArgCfg < 0):
                     continue;
                 
@@ -376,7 +393,6 @@ class vgrain:
     def execute(self, func: execFunc) -> None:
         """ Execute the command pass by command line arguments in oneshot """
 
-        #TO-DO from Opus 5.5 Missing --cmd raises AttributeError : self._command is only assigned when a '--cmd:' argument exists, so this check raises AttributeError instead of the intended KeyError. Also, remainConfig.index('=') at line 333 raises ValueError instead of returning -1, which makes the '< 0' check dead. Initialize self._command = None in __init__ and use str.find.
         if self._command is None:
             raise KeyError("Command not found, ensure the command is pass using --cmd:'CMD_JSON_BASE64'")
 

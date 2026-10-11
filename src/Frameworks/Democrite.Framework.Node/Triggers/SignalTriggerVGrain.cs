@@ -30,6 +30,7 @@ namespace Democrite.Framework.Node.Triggers
         #region Fields
 
         private readonly ISignalService _localSignalService;
+        private readonly SemaphoreSlim _fireLocker = new SemaphoreSlim(1, 1);
 
         #endregion
 
@@ -77,15 +78,26 @@ namespace Democrite.Framework.Node.Triggers
         }
 
         /// <inheritdoc />
-        //TO-DO from Opus 5.5 ReadOnly method mutates grain state concurrently : ReceiveSignalAsync is marked [ReadOnly], so calls interleave, yet FireTriggerAsync mutates _dataSourceProviders, State.DataSourceProviderStates and the stream cache across awaits. Interleaved signals can race (for example a double Add) and corrupt the data-source cursor state. Remove [ReadOnly] or guard the mutations explicitly.
+        /// <remarks>
+        ///     Called through <see cref="ISignalReceiverReadOnly"/> (interleaved calls),
+        ///     signals are processed one by one to protect the trigger mutable state (data source providers, cursors, stream cache)
+        /// </remarks>
         [OneWay]
         [ReadOnly]
-        public Task ReceiveSignalAsync(SignalMessage signal)
+        public async Task ReceiveSignalAsync(SignalMessage signal)
         {
             if (this.Enabled == false)
-                return Task.CompletedTask;
+                return;
 
-            return base.FireTriggerAsync(signal);
+            await this._fireLocker.WaitAsync();
+            try
+            {
+                await base.FireTriggerAsync(signal);
+            }
+            finally
+            {
+                this._fireLocker.Release();
+            }
         }
 
         #endregion

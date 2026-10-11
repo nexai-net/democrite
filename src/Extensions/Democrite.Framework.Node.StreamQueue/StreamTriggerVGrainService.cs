@@ -19,6 +19,12 @@ namespace Democrite.Framework.Node.StreamQueue
     /// <seealso cref="IGrainService" />
     public sealed class StreamTriggerVGrainService : TriggerBaseGrainService<IStreamTriggerHandlerVGrain>, IStreamTriggerVGrainService, ISiloStatusListener
     {
+        #region Fields
+
+        private readonly ISiloStatusOracle _statusOracle;
+
+        #endregion
+
         #region Ctor
 
         /// <summary>
@@ -32,6 +38,7 @@ namespace Democrite.Framework.Node.StreamQueue
                                           ITriggerDefinitionProvider triggerDefinitionProvider)
             : base(id, silo, loggerFactory, grainFactory, triggerDefinitionProvider, TriggerTypeEnum.Stream)
         {
+            this._statusOracle = statusOracle;
             statusOracle.SubscribeToSiloStatusEvents(this);
         }
 
@@ -47,8 +54,30 @@ namespace Democrite.Framework.Node.StreamQueue
             if (this.Status == GrainServiceStatus.Booting || this.Status == GrainServiceStatus.Stopped || updatedSilo.IsClient || status != SiloStatus.Dead)
                 return;
 
-            //TO-DO from Opus 5.5 Fire-and-forget refresh loses exceptions : The task is discarded, so failures become unobserved exceptions, and refreshes can overlap. The silo-status subscription made in the constructor is also never removed. Run it with explicit error handling (for example a helper that logs failures) and call UnSubscribeFromSiloStatusEvents on stop.
-            RefreshInfoAsync().ConfigureAwait(false);
+            // Refreshes are serialized by the base class lock; failures are logged instead of being unobserved
+            _ = SafeRefreshInfoAsync();
+        }
+
+        /// <inheritdoc />
+        public override Task Stop()
+        {
+            this._statusOracle.UnSubscribeFromSiloStatusEvents(this);
+            return base.Stop();
+        }
+
+        /// <summary>
+        /// Refresh information and log any failure
+        /// </summary>
+        private async Task SafeRefreshInfoAsync()
+        {
+            try
+            {
+                await RefreshInfoAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.Logger.LogError(ex, "Stream trigger refresh after silo status change failed");
+            }
         }
 
         #endregion

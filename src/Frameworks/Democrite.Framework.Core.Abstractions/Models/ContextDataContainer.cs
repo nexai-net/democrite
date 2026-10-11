@@ -45,6 +45,7 @@ namespace Democrite.Framework.Core.Models
         private readonly byte[] _serializedData;
         private bool _dataLoaded;
         private TData? _data;
+        private object? _dataLock;
 
         #endregion
 
@@ -66,14 +67,10 @@ namespace Democrite.Framework.Core.Models
         /// <inheritdoc />
         public object? GetData(IDemocriteSerializer democriteSerializer)
         {
-            //TO-DO from Opus 5.5 Non thread-safe lazy deserialization : Concurrent GetData calls can deserialize multiple times and observe _dataLoaded before _data is published. Use Lazy<T> or LazyInitializer.
-            if (!this._dataLoaded)
-            {
-                this._data = democriteSerializer.Deserialize<TData>(this._serializedData);
-                this._dataLoaded = true;
-            }
-
-            return this._data;
+            return LazyInitializer.EnsureInitialized(ref this._data,
+                                                     ref this._dataLoaded,
+                                                     ref this._dataLock,
+                                                     () => democriteSerializer.Deserialize<TData>(this._serializedData));
         }
 
         /// <inheritdoc />

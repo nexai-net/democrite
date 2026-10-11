@@ -12,9 +12,9 @@ namespace Democrite.Framework.Node.UnitTests.Configurations
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Options;
 
-    using Moq;
-
     using NFluent;
+
+    using NSubstitute;
 
     using Orleans.Runtime;
     using Orleans.Serialization;
@@ -48,7 +48,7 @@ namespace Democrite.Framework.Node.UnitTests.Configurations
                 new Regex(",\\sDemocrite.UnitTests.ToolKit,\\sVersion=", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             };
 
-            s_mockRoot = new Mock<IDemocriteNodeWizard>(MockBehavior.Strict).Object;
+            s_mockRoot = Substitute.For<IDemocriteNodeWizard>();
         }
 
         #endregion

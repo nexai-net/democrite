@@ -9,6 +9,7 @@ namespace Democrite.Toolbox.Services
     using Democrite.Toolbox.Disposables;
 
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Reactive.Concurrency;
     using System.Reactive.Linq;
@@ -24,10 +25,10 @@ namespace Democrite.Toolbox.Services
     {
         #region Fields
 
-        private readonly Queue<string> _standardOutputLogger;
+        private readonly ConcurrentQueue<string> _standardOutputLogger;
         private readonly Subject<string> _standardOutput;
 
-        private readonly Queue<string> _errorOutputLogger;
+        private readonly ConcurrentQueue<string> _errorOutputLogger;
         private readonly Subject<string> _errorOutput;
 
         private readonly SemaphoreSlim _locker;
@@ -49,11 +50,10 @@ namespace Democrite.Toolbox.Services
             this.Arguments = arguments;
 
             // Standard output
-            this._standardOutputLogger = new Queue<string>();
+            this._standardOutputLogger = new ConcurrentQueue<string>();
             this._standardOutput = new Subject<string>();
             RegisterDisposableDependency(this._standardOutput);
 
-            //TO-DO from Opus 5.5 Non-thread-safe Queue shared across threads : Process output events enqueue on a thread-pool thread while StandardOutput and ErrorOutput hand the same live Queue to callers, which enumerate it (for example Any() and Where() in ProcessSystemService). Use ConcurrentQueue<string> and return snapshots (ToArray()).
             var defaultRecordToken = this._standardOutput.Subscribe((n) => this._standardOutputLogger.Enqueue(n));
             RegisterDisposableDependency(defaultRecordToken);
 
@@ -66,7 +66,7 @@ namespace Democrite.Toolbox.Services
             this.StandardOutputObservable = standardOutputConnectObservable;
 
             // Error output
-            this._errorOutputLogger = new Queue<string>();
+            this._errorOutputLogger = new ConcurrentQueue<string>();
 
             this._errorOutput = new Subject<string>();
             RegisterDisposableDependency(this._errorOutput);
@@ -99,7 +99,7 @@ namespace Democrite.Toolbox.Services
         /// <inheritdoc />
         public IReadOnlyCollection<string> StandardOutput
         {
-            get { return this._standardOutputLogger; }
+            get { return this._standardOutputLogger.ToArray(); }
         }
 
         /// <inheritdoc />
@@ -108,7 +108,7 @@ namespace Democrite.Toolbox.Services
         /// <inheritdoc />
         public IReadOnlyCollection<string> ErrorOutput
         {
-            get { return this._errorOutputLogger; }
+            get { return this._errorOutputLogger.ToArray(); }
         }
 
         /// <inheritdoc />

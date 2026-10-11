@@ -74,20 +74,34 @@ namespace Democrite.Framework.Node.Signals.Doors
             }
         }
 
+        /// <inheritdoc />
+        public override Task Stop()
+        {
+            this._doorDefinitionProvider.DataChanged -= DoorDefinitionProvider_DataChanged;
+            return base.Stop();
+        }
+
         /// <summary>
         /// Doors the definition provider data changed.
         /// </summary>
-        //TO-DO from Opus 5.5 async void event handler, never unsubscribed : Any exception thrown outside LaunchSignalsVGrainsAsync (for example ObjectDisposedException on _locker) crashes the process, and the DataChanged handler is never removed when the service stops, so the service is never released and keeps running after stop. Wrap the body in try/catch with logging and unsubscribe in the stop or dispose path.
         private async void DoorDefinitionProvider_DataChanged(object? sender, IReadOnlyCollection<Guid> definitionThatChanged)
         {
-            await this._locker.WaitAsync();
+            // async void : no exception must escape, otherwise the process crash
             try
             {
-                await LaunchSignalsVGrainsAsync(definitionThatChanged);
+                await this._locker.WaitAsync();
+                try
+                {
+                    await LaunchSignalsVGrainsAsync(definitionThatChanged);
+                }
+                finally
+                {
+                    this._locker.Release();
+                }
             }
-            finally
+            catch (Exception ex)
             {
-                this._locker.Release();
+                this.Logger.OptiLog(LogLevel.Error, "Door definitions update failed : {exception}", ex);
             }
         }
 

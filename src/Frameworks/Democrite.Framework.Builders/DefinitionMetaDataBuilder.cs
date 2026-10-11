@@ -85,13 +85,13 @@ namespace Democrite.Framework.Builders
         }
 
         /// <inheritdoc />
-        public DefinitionMetaData Build()
+        public DefinitionMetaData? Build()
         {
             return Build(out _, out _);
         }
 
         /// <inheritdoc />
-        public DefinitionMetaData Build(out string? displayName, out string? namespaceIdentifier)
+        public DefinitionMetaData? Build(out string? displayName, out string? namespaceIdentifier)
         {
             displayName = this._displayName;
             namespaceIdentifier = this._namespaceIdntifier;
@@ -101,8 +101,7 @@ namespace Democrite.Framework.Builders
                 this._tags.Count == 0 &&
                 string.IsNullOrEmpty(this._namespaceIdntifier))
             {
-                //TO-DO from Opus 5.5 Non-nullable Build() returns null : Build() is declared to return a non-nullable DefinitionMetaData but returns null! when nothing is set. That hides possible NullReferenceExceptions from the nullable analysis for every caller. Declare the return type as DefinitionMetaData? (as Execute already does), or return an empty instance.
-                return null!;
+                return null;
             }
 
             return new DefinitionMetaData(this._description,
@@ -131,7 +130,7 @@ namespace Democrite.Framework.Builders
         }
 
         /// <inheritdoc />
-        DefinitionMetaData IDefinitionMetaDataWithDisplayNameBuilder.Build(out string? displayName, out string? namespaceIdentifier)
+        DefinitionMetaData? IDefinitionMetaDataWithDisplayNameBuilder.Build(out string? displayName, out string? namespaceIdentifier)
         {
             return this.Build(out displayName, out namespaceIdentifier);
         }

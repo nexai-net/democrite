@@ -91,7 +91,20 @@ namespace Democrite.Toolbox.Services
         /// <inheritdoc />
         protected override void OnDisposeThreadSafeBegin()
         {
-            this._process?.Kill(true);
+            Process? process;
+            lock (this._info)
+            {
+                process = this._process;
+            }
+
+            try
+            {
+                process?.Kill(true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Process already exited and disposed
+            }
         }
 
         /// <summary>
@@ -106,36 +119,65 @@ namespace Democrite.Toolbox.Services
                     if (this._process != null)
                         throw new InvalidOperationException("Could not start a running process");
 
-                    this._process = Process.Start(this._info);
-
-                    if (this._process == null)
+                    var process = new Process()
                     {
-                        throw new InvalidOperationException("Process information are invalid");
-                    }
+                        StartInfo = this._info
+                    };
 
-                    //this._process.Exited += Process_Exited;
-                    this._process.OutputDataReceived += Process_OutputDataReceived;
-                    this._process.ErrorDataReceived += Process_ErrorDataReceived;
+                    //process.Exited += Process_Exited;
+                    process.OutputDataReceived += Process_OutputDataReceived;
+                    process.ErrorDataReceived += Process_ErrorDataReceived;
 
-                    this._process.EnableRaisingEvents = true;
+                    process.EnableRaisingEvents = true;
 
-                    //TO-DO from Opus 5.5 Process started twice, first one orphaned : Process.Start(info) already launches the process, and the instance Start() call then closes that handle and launches a second process. The first process is left running untracked, and its redirected output is never read, so it can block on a full pipe. Remove the second Start() call, or build the Process with new Process { StartInfo = info } and call Start() only once.
-                    if (!this._process.Start())
+                    // Start only once
+                    if (!process.Start())
                     {
+                        process.Dispose();
                         throw new InvalidOperationException("Process couldn't start");
                     }
+
+                    this._process = process;
 
                     this._process.BeginOutputReadLine();
                     this._process.BeginErrorReadLine();
 
                     var processTask = this._process.WaitForExitAsync(cancellationToken);
 
-                    //TO-DO from Opus 5.5 Cancellation reads ExitCode of running process : If the token is cancelled, WaitForExitAsync finishes while the process is still running, so _process.ExitCode throws inside the continuation. The process is never killed or disposed, and _process is cleared without the lock. On cancellation kill the process, then dispose it and set the fields under lock(_info).
                     processTask = processTask.ContinueWith(t =>
                     {
-                        this.ExitCode = this._process.ExitCode;
-                        this._process = null;
-                    });
+                        int? exitCode = null;
+                        try
+                        {
+                            // On cancellation WaitForExitAsync ends while the process may still be running
+                            if (!process.HasExited)
+                            {
+                                process.Kill(true);
+                                process.WaitForExit(5000);
+                            }
+
+                            exitCode = process.ExitCode;
+                        }
+                        catch (Exception)
+                        {
+                            // Process state could not be retrieved, ExitCode is set to -1
+                        }
+                        finally
+                        {
+                            lock (this._info)
+                            {
+                                this.ExitCode = exitCode ?? -1;
+
+                                if (ReferenceEquals(this._process, process))
+                                    this._process = null;
+                            }
+
+                            process.Dispose();
+                        }
+
+                        // Propagate the cancellation or failure of the waiting
+                        t.GetAwaiter().GetResult();
+                    }, TaskScheduler.Default);
 
                     base.SetProcessWaitingTask(processTask);
                 }

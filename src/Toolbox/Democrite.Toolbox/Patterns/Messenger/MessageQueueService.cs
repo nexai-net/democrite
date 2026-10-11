@@ -92,8 +92,9 @@ namespace Democrite.Toolbox.Patterns.Messenger
                 if (this._channels.TryGetValue(key, out var channel))
                     channels[0] = (MessageQueueChannel<TMessage>)channel;
 
-                //TO-DO from Opus 5.5 Category messages delivered twice to parent subscribers : MessageQueueChannel.SendAsync already forwards to its _parent channel, and SendAsync here also sends to the parent channel directly. Subscribers to the parent therefore receive every categorized message twice. Drop the explicit parent send, or send to the parent only when no category channel exists.
-                if (!string.IsNullOrEmpty(category))
+                // A category channel already forwards the message to its parent channel,
+                // send directly to the parent only when no category channel exists to avoid double delivery
+                if (!string.IsNullOrEmpty(category) && channels[0] is null)
                 {
                     var parentKey = new ChannelKey(typeof(TMessage), null);
                     if (this._channels.TryGetValue(parentKey, out var parentChannel))

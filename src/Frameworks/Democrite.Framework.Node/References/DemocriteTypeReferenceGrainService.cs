@@ -61,7 +61,7 @@ namespace Democrite.Framework.Node.References
         /// <summary>
         /// Determines whether if ETAG is the last used
         /// </summary>
-        bool IsToUpdate(string currentRegistryEtag);
+        ValueTask<bool> IsToUpdate(string currentRegistryEtag);
     }
 
     /// <inheritdoc cref="IDemocriteTypeReferenceGrainService" />
@@ -191,8 +191,7 @@ namespace Democrite.Framework.Node.References
                         foreach (var target in registry.References)
                         {
                             if (this._referenceTargetLocal.Contains(target))
-                                //TO-DO from Opus 5.5 Early return wipes remote reference registry : _referenceTargetRemote has already been cleared, so returning on the first remote target that also exists locally drops every remote reference and skips the ETag update. This should be `continue;`.
-                                return;
+                                continue;
 
                             this._referenceTargetRemote.Add(target);
                         }

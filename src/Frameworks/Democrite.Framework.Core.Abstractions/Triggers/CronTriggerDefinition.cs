@@ -118,6 +118,20 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
         }
 
         /// <inheritdoc />
+        protected override bool OnEquals(TriggerDefinition other)
+        {
+            return other is CronTriggerDefinition otherCron &&
+                   string.Equals(this.CronExpression, otherCron.CronExpression) &&
+                   this.UseSecond == otherCron.UseSecond;
+        }
+
+        /// <inheritdoc />
+        protected override int OnGetHashCode()
+        {
+            return HashCode.Combine(this.CronExpression, this.UseSecond);
+        }
+
+        /// <inheritdoc />
         protected override bool OnValidate(ILogger logger, bool matchWarningAsError = false)
         {
             var valid = true;
@@ -178,12 +192,13 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
             }
 
             ValidateCronExpressionPart("minutes", segments[startIndx + 0], 0, 60);
-            //TO-DO from Opus 5.5 Wrong cron field ranges : Hours accept 0-59, days are limited to 0-23, months to 0-11 and day-of-week excludes 6 (excludedMax 6), so valid expressions like day 31, month 12 or Saturday are rejected while hour 45 is accepted. Use hours [0,24), days [1,32), months [1,13), dayOfWeek [0,7).
-            ValidateCronExpressionPart("hours", segments[startIndx + 1], 0, 60);
-            ValidateCronExpressionPart("days", segments[startIndx + 2], 0, 24);
+            ValidateCronExpressionPart("hours", segments[startIndx + 1], 0, 24);
+            ValidateCronExpressionPart("days", segments[startIndx + 2], 1, 32);
 
-            ValidateCronExpressionPart("months", segments[startIndx + 3], 0, 12, s_months);
-            ValidateCronExpressionPart("dayofweak", segments[startIndx + 4], 0, 6, s_daysOfWeek);
+            ValidateCronExpressionPart("months", segments[startIndx + 3], 1, 13, s_months);
+
+            // 0 and 7 are both accepted as Sunday
+            ValidateCronExpressionPart("dayofweak", segments[startIndx + 4], 0, 8, s_daysOfWeek);
 
         }
 

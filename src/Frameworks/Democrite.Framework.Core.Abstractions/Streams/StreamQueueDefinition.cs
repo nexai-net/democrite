@@ -120,8 +120,7 @@ namespace Democrite.Framework.Core.Abstractions.Streams
         /// <inheritdoc />
         public string ToDebugDisplayName()
         {
-            //TO-DO from Opus 5.5 StreamKey printed twice, StreamUid missing : The debug name prints StreamKey twice instead of StreamUid; the validation messages below are also swapped (namespace vs configuration). Use StreamUid for the last segment and fix the messages.
-            return $"[{this.StreamConfiguration}] - {this.StreamNamespace} - {this.StreamKey}{(this.StreamKey is null ? "" : "-")}{this.StreamKey}";
+            return $"[{this.StreamConfiguration}] - {this.StreamNamespace} - {this.StreamKey}{(this.StreamKey is null || this.StreamUid is null ? "" : "-")}{this.StreamUid}";
         }
 
         /// <inheritdoc />
@@ -131,13 +130,13 @@ namespace Democrite.Framework.Core.Abstractions.Streams
 
             if (string.IsNullOrEmpty(this.StreamNamespace))
             {
-                logger.OptiLog(LogLevel.Error, "StreamKey nust not be null or empty");
+                logger.OptiLog(LogLevel.Error, "StreamNamespace must not be null or empty");
                 isValid = false;
             }
 
             if (string.IsNullOrEmpty(this.StreamConfiguration))
             {
-                logger.OptiLog(LogLevel.Error, "StreamNamespace nust not be null or empty");
+                logger.OptiLog(LogLevel.Error, "StreamConfiguration must not be null or empty");
                 isValid = false;
             }
 

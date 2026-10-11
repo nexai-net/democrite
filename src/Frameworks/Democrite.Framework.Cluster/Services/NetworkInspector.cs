@@ -26,8 +26,8 @@ namespace Democrite.Framework.Cluster.Services
         private const string PortGroupName = "Port";
         private const string HostGroupName = "Host";
 
-        private static readonly Regex s_ipString = new Regex("^(?<Ip>[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3})$", RegexOptions.Compiled);
-        private static readonly Regex s_ipPortString = new Regex("^(?<Ip>[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):(?<Port>[0-9]{2,6})$", RegexOptions.Compiled);
+        private static readonly Regex s_ipString = new Regex(@"^(?<Ip>[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$", RegexOptions.Compiled);
+        private static readonly Regex s_ipPortString = new Regex(@"^(?<Ip>[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}):(?<Port>[0-9]{2,6})$", RegexOptions.Compiled);
         private static readonly Regex s_hostPortString = new Regex("^(?<Host>[a-zA-Z0-9-.]+):(?<Port>[0-9]{2,6})$", RegexOptions.Compiled);
 
         private static readonly Dictionary<Guid, int> s_reservedPortsIndexed;
@@ -81,8 +81,8 @@ namespace Democrite.Framework.Cluster.Services
             var addresses = GetHostAddresses(host);
             return addresses.Select(ip => ip.ToString())
                             .Where(ip => s_ipString.IsMatch(ip))
-                            //TO-DO from Opus 5.5 Host without port yields invalid endpoint : When the host string has no ':port', port stays -1 and produces 'a.b.c.d:-1', which IPEndPoint.Parse rejects, so the endpoint is dropped with only a log line. Omit the port or apply a default gateway port when none is given; also escape '.' in the IP regexes, which currently match any character.
-                            .Select(ip => ip + ":" + port)
+                            // No port provided : return the ip only (same as the ip-only input case) instead of an invalid 'ip:-1'
+                            .Select(ip => port >= 0 ? ip + ":" + port : ip)
                             .Distinct()
                             .ToArray();
         }
@@ -106,17 +106,17 @@ namespace Democrite.Framework.Cluster.Services
         public ISecureContextToken<int> GetAndReservedNextUnusedPort(int minPortIncluded, int maxPortExcluded)
         {
             int newPort = -1;
+            Guid id;
             lock (s_reservedPortsIndexed)
             {
                 newPort = NetworkHelper.GetNextUnusedPort(minPortIncluded, maxPortExcluded, s_reservedPorts);
 
-                var id = Guid.NewGuid();
+                id = Guid.NewGuid();
                 s_reservedPortsIndexed.Add(id, newPort);
                 s_reservedPorts = s_reservedPortsIndexed.Values.ToArray();
 
             }
-            //TO-DO from Opus 5.5 Reserved ports are never released : SecureContextToken.Create generates its own new Guid, which differs from the 'id' key added to s_reservedPortsIndexed, so ReleaseReservedPort never finds the key and reserved ports leak for the process lifetime. Construct the token with the same id (new SecureContextToken<int>(id, newPort, ReleaseReservedPort)).
-            return SecureContextToken.Create(newPort, ReleaseReservedPort);
+            return new SecureContextToken<int>(id, newPort, ReleaseReservedPort);
         }
 
         /// <summary>

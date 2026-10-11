@@ -134,14 +134,72 @@ namespace Democrite.Framework.Builders.Signals
         /// <remarks>
         ///     We recommand that <typeparamref name="THandler"/> implementation inherite from <see cref="Framework.Node.Signals.Doors.DoorBaseVGrain{THandler, TDoorDef}"/> from extension <see cref="Democrite.Framework.Node.Signals"/>
         /// </remarks>
-        //TO-DO from Opus 5.5 THandler type parameter is never used : THandler is only validated as an interface; it is never recorded in the resulting DoorDefinition, which is built entirely by the callback. The API implies a custom VGrain handler is wired up when it is not. Pass typeof(THandler) to the produced definition, or remove the generic parameter.
         public static IDefinitionBaseBuilder<DoorDefinition> UseCustomHandler<THandler>(this IDoorWithListenerBuilder doorWithListenerBuilder, Func<IDoorWithListenerBuilder, IDefinitionBaseBuilder<DoorDefinition>> doorDefinitionBuilder)
             where THandler : IDoorVGrain
         {
             if (typeof(THandler).IsInterface == false)
                 throw new ArgumentException(nameof(THandler) + " must be an interface that implement IDoorVGrain");
 
-            return doorDefinitionBuilder?.Invoke(doorWithListenerBuilder) ?? throw new InvalidOperationException("Invalid null build");
+            var builder = doorDefinitionBuilder?.Invoke(doorWithListenerBuilder) ?? throw new InvalidOperationException("Invalid null build");
+
+            // The definition is produced by the callback, ensure it really targets the requested handler
+            return new CustomHandlerDoorDefinitionBuilder(builder, typeof(THandler));
+        }
+
+        #endregion
+
+        #region Nested
+
+        /// <summary>
+        /// Builder wrapper that validate the handler (<see cref="DoorDefinition.VGrainInterfaceFullName"/>) of the produced <see cref="DoorDefinition"/>
+        /// </summary>
+        private sealed class CustomHandlerDoorDefinitionBuilder : IDefinitionBaseBuilder<DoorDefinition>
+        {
+            #region Fields
+
+            private readonly IDefinitionBaseBuilder<DoorDefinition> _innerBuilder;
+            private readonly Type _handlerType;
+
+            #endregion
+
+            #region Ctor
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="CustomHandlerDoorDefinitionBuilder"/> class.
+            /// </summary>
+            public CustomHandlerDoorDefinitionBuilder(IDefinitionBaseBuilder<DoorDefinition> innerBuilder, Type handlerType)
+            {
+                this._innerBuilder = innerBuilder;
+                this._handlerType = handlerType;
+            }
+
+            #endregion
+
+            #region Methods
+
+            /// <inheritdoc />
+            public DoorDefinition Build()
+            {
+                var definition = this._innerBuilder.Build();
+
+                if (definition is null)
+                    throw new InvalidOperationException("Invalid null build");
+
+                var handlerName = definition.VGrainInterfaceFullName;
+                var match = !string.IsNullOrEmpty(handlerName) &&
+                            (string.Equals(handlerName, this._handlerType.AssemblyQualifiedName, StringComparison.Ordinal) ||
+                             string.Equals(handlerName, this._handlerType.FullName, StringComparison.Ordinal) ||
+                             Type.GetType(handlerName, false) == this._handlerType);
+
+                if (!match)
+                {
+                    throw new InvalidOperationException("Door definition built use the handler '" + handlerName + "' instead of the requested custom handler '" + this._handlerType.AssemblyQualifiedName + "'");
+                }
+
+                return definition;
+            }
+
+            #endregion
         }
 
         #endregion

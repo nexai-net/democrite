@@ -55,23 +55,36 @@ namespace Democrite.Toolbox.WPF.Commands
         /// <inheritdoc />
         public override void Execute(object? parameter)
         {
-            //TO-DO from Opus 5.5 Async command runs off UI thread, fire-and-forget : Execute pushes the callback to the thread pool, so callbacks touching UI-bound state run off the dispatcher. IsRunning is only set once the task starts, and CanExecuteChanged is never raised, so the button stays enabled and double execution is possible. Call StartRunningScope synchronously, run the callback via the dispatcher context, and refresh CanExecute around execution.
-            Task.Run(async () =>
+            // Prevent double execution from the UI while a previous one is still running
+            if (this.IsRunning)
+                return;
+
+            // Mark as running synchronously to close the double execution window
+            StartRunningScope();
+
+            // Run the callback in the dispatcher context to let it safely touch UI-bound state
+            this.DispatcherProxy.Send(() => _ = ExecuteOnDispatcherAsync(parameter));
+        }
+
+        /// <summary>
+        /// Executes the callback from the dispatcher context, running scope already started
+        /// </summary>
+        private async Task ExecuteOnDispatcherAsync(object? parameter)
+        {
+            try
             {
-                StartRunningScope();
-                try
-                {
-                    await OnSafeExecuteAsync(parameter);
-                }
-                catch (Exception ex)
-                {
-                    this.DispatcherProxy.Throw(ex);
-                }
-                finally
-                {
-                    StopRunningScope();
-                }
-            }).ConfigureAwait(false);
+                RefreshCanExecuteStatus();
+                await OnSafeExecuteAsync(parameter);
+            }
+            catch (Exception ex)
+            {
+                this.DispatcherProxy.Throw(ex);
+            }
+            finally
+            {
+                StopRunningScope();
+                RefreshCanExecuteStatus();
+            }
         }
 
         /// <inheritdoc />

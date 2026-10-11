@@ -16,6 +16,8 @@ namespace Democrite.Framework.Core.Abstractions.Models
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Runtime.Serialization;
+    using System.Security.Cryptography;
+    using System.Text;
 
     /// <summary>
     /// Container used to save definition with an etag to detect update
@@ -149,6 +151,13 @@ namespace Democrite.Framework.Core.Abstractions.Models
         private readonly static Type s_genericTraits = typeof(EtagDefinitionContainer<>);
         private readonly static Type s_definitionTraits = typeof(TDefinition);
 
+        private readonly static Newtonsoft.Json.JsonSerializerSettings s_etagSerializerSettings = new Newtonsoft.Json.JsonSerializerSettings()
+        {
+            ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
+            Formatting = Newtonsoft.Json.Formatting.None,
+            TypeNameHandling = Newtonsoft.Json.TypeNameHandling.Auto,
+        };
+
         #endregion
 
         #region Ctor
@@ -164,10 +173,9 @@ namespace Democrite.Framework.Core.Abstractions.Models
         /// <summary>
         /// Initializes a new instance of the <see cref="EtagDefinitionContainer{TDefinition}"/> class.
         /// </summary>
-        //TO-DO from Opus 5.5 Random 32-bit etag ignores content : The etag is 8 hex chars of a new Guid, so identical definitions get different etags (false change detection) and collisions are possible. Derive the etag from a content hash of the definition.
         public EtagDefinitionContainer(TDefinition definition)
             : base(definition.Uid,
-                   new string(Guid.NewGuid().ToString().Replace("-", "").Take(8).ToArray()),
+                   ComputeContentEtag(definition),
                    DefaultDiscriminator)
         {
             this.Definition = definition;
@@ -207,6 +215,27 @@ namespace Democrite.Framework.Core.Abstractions.Models
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Computes a deterministic etag from the definition content (SHA256 of its JSON serialization).
+        /// </summary>
+        /// <remarks>
+        ///     Falls back to a random etag if the definition could not be serialized.
+        /// </remarks>
+        private static string ComputeContentEtag(TDefinition definition)
+        {
+            try
+            {
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(definition, s_etagSerializerSettings);
+                var payload = Encoding.UTF8.GetBytes(definition.GetType().FullName + "|" + definition.Uid + "|" + json);
+                var hash = SHA256.HashData(payload);
+                return Convert.ToHexString(hash, 0, 16);
+            }
+            catch
+            {
+                return Guid.NewGuid().ToString("N");
+            }
+        }
 
         /// <summary>
         /// Converts to containerheaderonly.

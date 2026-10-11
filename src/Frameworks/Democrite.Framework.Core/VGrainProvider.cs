@@ -11,6 +11,8 @@ namespace Democrite.Framework.Core
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Logging.Abstractions;
 
+    using Orleans.Runtime;
+
     using System;
     using System.Threading.Tasks;
 
@@ -105,6 +107,15 @@ namespace Democrite.Framework.Core
         public ValueTask<TVGrainType> GetVGrainWithConfigAsync<TVGrainType, TConfig>(object? input, TConfig? executionContextConfig, ILogger? logger = null) where TVGrainType : IVGrain
         {
             return GetVGrainAsync<TVGrainType>(input, ExecutionContextWithConfiguration<TConfig>.EmptyWithConfig(executionContextConfig), logger);
+        }
+
+        /// <summary>
+        /// Gets the vgrain orlean proxy targeting a specific grain key <paramref name="forcedGrainId"/> instead of building one from input/context
+        /// </summary>
+        internal IVGrain GetVGrainWithForcedId(Type vgrainInterfaceType, IdSpan forcedGrainId)
+        {
+            // IdSpan key is UTF8 encoded string; GetGrain(Type, string) rebuilds the exact same key (Guid, long and composite keys included)
+            return (IVGrain)this._grainFactory.GetGrain(vgrainInterfaceType, forcedGrainId.ToString());
         }
 
         #region Tools

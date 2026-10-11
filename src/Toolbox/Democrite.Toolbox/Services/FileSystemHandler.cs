@@ -55,22 +55,9 @@ namespace Democrite.Toolbox.Services
             var preparationSucceed = CheckAndPrepareFileTarget(uri, @override);
             if (preparationSucceed)
             {
-                //TO-DO from Opus 5.5 Copy loop allocates whole file, may never end : Math.Max allocates a buffer the size of the whole file instead of capping it at 64 KB. The loop also compares bytes read against stream.Length, so a stream whose position is not 0, or a read that returns 0 early, makes it spin forever. Use Math.Min, or simply await stream.CopyToAsync(outputStream, token).
-                var buffer = new byte[Math.Max(stream.Length, 65536)];
-
                 using (var outputStream = File.OpenWrite(uri.LocalPath))
                 {
-                    var readTotal = 0;
-                    var remains = stream.Length;
-
-                    while (remains > 0)
-                    {
-                        var readData = await stream.ReadAsync(buffer, 0, buffer.Length, token);
-                        await outputStream.WriteAsync(buffer, 0, readData, token);
-
-                        readTotal += readData;
-                        remains = stream.Length - readTotal;
-                    }
+                    await stream.CopyToAsync(outputStream, 65536, token);
                 }
             }
 
@@ -149,17 +136,18 @@ namespace Democrite.Toolbox.Services
             }
 
             var localTempFolder = MakeUriAbsolute(".tmp");
-            //TO-DO from Opus 5.5 Temp folder returned as URI, not path : MakeUriAbsolute builds a file:// URI, so OriginalString returns 'file:///C:/.../.tmp' rather than a filesystem path, unlike the global branch, which returns a plain path. Return localTempFolder.LocalPath.
-            return ValueTask.FromResult(localTempFolder.OriginalString);
+            return ValueTask.FromResult(localTempFolder.LocalPath);
         }
 
         /// <inheritdoc />
         public ValueTask<bool> Delete(Uri file)
         {
-            var exists = Exists(file);
+            var absoluteFile = MakeUriAbsolute(file);
+
+            // Only files are deleted here, use DeleteFolder for directories
+            var exists = absoluteFile.IsFile && File.Exists(absoluteFile.LocalPath);
             if (exists)
-                //TO-DO from Opus 5.5 Delete uses URI string instead of local path : For absolute file:// URIs, OriginalString is 'file:///...', which File.Delete rejects. Exists() also returns true for directories, so File.Delete fails on those. Use file.LocalPath and handle directories separately.
-                File.Delete(file.OriginalString);
+                File.Delete(absoluteFile.LocalPath);
             return ValueTask.FromResult(exists);
         }
 

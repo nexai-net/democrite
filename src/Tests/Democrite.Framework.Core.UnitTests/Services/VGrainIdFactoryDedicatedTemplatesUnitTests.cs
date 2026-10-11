@@ -11,7 +11,7 @@ namespace Democrite.Framework.Core.UnitTests.Services
 
     using Microsoft.Extensions.Logging.Abstractions;
 
-    using Moq;
+    using NSubstitute;
 
     using NFluent;
 
@@ -103,7 +103,7 @@ namespace Democrite.Framework.Core.UnitTests.Services
             Check.That(factory).IsNotNull();
             Check.That(factory.IsDisposed).IsTrue();
 
-            Check.ThatCode(() => factory.BuildNewId<ISimpleGuidWithNewTemplateVGrain>(null, new Mock<IExecutionContext>().Object, NullLogger.Instance)).Throws<ObjectDisposedException>();
+            Check.ThatCode(() => factory.BuildNewId<ISimpleGuidWithNewTemplateVGrain>(null, Substitute.For<IExecutionContext>(), NullLogger.Instance)).Throws<ObjectDisposedException>();
         }
 
         /// <summary>

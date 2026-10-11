@@ -16,7 +16,11 @@ namespace Democrite.Framework.Node.Abstractions.Models
     {
         #region Fields
 
-        public const string ConfiguratioName = "Diagnostic";
+        public const string ConfigurationName = "Diagnostic";
+
+        [Obsolete("Misspelled, use " + nameof(ConfigurationName) + " instead.")]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        public const string ConfiguratioName = ConfigurationName;
 
         #endregion
 

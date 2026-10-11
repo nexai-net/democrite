@@ -38,6 +38,7 @@ namespace Democrite.Framework.Builders
     using System;
     using System.Collections;
     using System.Diagnostics;
+    using System.Globalization;
     using System.IO;
     using System.Linq;
     using System.Linq.Expressions;
@@ -46,6 +47,8 @@ namespace Democrite.Framework.Builders
     using System.Text.RegularExpressions;
     using System.Threading.Tasks;
 
+    using YamlDotNet.Core;
+    using YamlDotNet.Core.Events;
     using YamlDotNet.Serialization;
 
     /// <summary>
@@ -66,6 +69,16 @@ namespace Democrite.Framework.Builders
         private static readonly JSchema s_definitionSchema;
 
         private static readonly MethodInfo s_createSelectStage;
+
+        /// <summary>
+        /// Maximum number of characters accepted for a definition content
+        /// </summary>
+        private const int MAX_CONTENT_LENGTH = 4 * 1024 * 1024;
+
+        /// <summary>
+        /// Maximum nesting depth accepted for a definition content (yaml or json)
+        /// </summary>
+        private const int MAX_CONTENT_DEPTH = 64;
 
         private readonly IDemocriteReferenceSolverService _solverService;
         private readonly ILogger<IDefinitionCompiler> _logger;
@@ -99,7 +112,6 @@ namespace Democrite.Framework.Builders
                 s_definitionSchema = JSchema.Parse(reader.ReadToEnd());
             }
 
-            //TO-DO from Opus 5.5 YAML alias expansion and unbounded input : The YAML is deserialized to an object graph and re-serialized to JSON, so anchors and aliases are expanded (billion-laughs style), and there is no limit on input size or depth for definitions that may come from external sources. Reject aliases with a custom parser or event filter, enforce a maximum content length, and limit JSON depth (JsonLoadSettings / MaxDepth).
             s_yamlDeserializer = new DeserializerBuilder().WithAttemptingUnquotedStringTypeDeserialization()
                                                           .Build();
 
@@ -122,6 +134,70 @@ namespace Democrite.Framework.Builders
         #endregion
 
         #region nested
+
+        /// <summary>
+        /// Yaml parser wrapper that rejects aliases (prevent alias expansion attacks) and limits the nesting depth
+        /// </summary>
+        private sealed class SafeYamlParser : IParser
+        {
+            #region Fields
+
+            private readonly IParser _parser;
+            private int _depth;
+
+            #endregion
+
+            #region Ctor
+
+            /// <summary>
+            /// Initialize a new instance of the class <see cref="SafeYamlParser"/>
+            /// </summary>
+            public SafeYamlParser(IParser parser)
+            {
+                this._parser = parser;
+            }
+
+            #endregion
+
+            #region Properties
+
+            /// <inheritdoc />
+            public ParsingEvent? Current
+            {
+                get { return this._parser.Current; }
+            }
+
+            #endregion
+
+            #region Methods
+
+            /// <inheritdoc />
+            public bool MoveNext()
+            {
+                if (!this._parser.MoveNext())
+                    return false;
+
+                var current = this._parser.Current;
+
+                if (current is AnchorAlias)
+                    throw new InvalidDataException("Yaml aliases are not supported in definitions (" + current.Start + ")");
+
+                if (current is MappingStart || current is SequenceStart)
+                {
+                    this._depth++;
+                    if (this._depth > MAX_CONTENT_DEPTH)
+                        throw new InvalidDataException("Yaml definition exceed the maximum depth allowed " + MAX_CONTENT_DEPTH);
+                }
+                else if (current is MappingEnd || current is SequenceEnd)
+                {
+                    this._depth--;
+                }
+
+                return true;
+            }
+
+            #endregion
+        }
 
         private sealed class CompilationContext : SafeDisposable
         {
@@ -307,13 +383,30 @@ namespace Democrite.Framework.Builders
         /// </remarks>
         private LightDefinitions? DeserializaDefinitionFile(string content, DefinitionParserSourceEnum sourceType)
         {
+            ArgumentNullException.ThrowIfNull(content);
+
+            if (content.Length > MAX_CONTENT_LENGTH)
+                throw new InvalidDataException("Definition content exceed the maximum size allowed " + MAX_CONTENT_LENGTH + " characters");
+
             if (sourceType == DefinitionParserSourceEnum.Yaml)
             {
                 // Convert yaml to json to apply the same validator schema
                 content = ConvertYamlToJson(content);
             }
 
-            var json = JObject.Parse(content);
+            JObject json;
+            using (var jsonTxt = new StringReader(content))
+            using (var jsonReader = new JsonTextReader(jsonTxt) { MaxDepth = MAX_CONTENT_DEPTH })
+            {
+                json = JObject.Load(jsonReader);
+
+                // Same behavior as JObject.Parse : no additional content allowed
+                while (jsonReader.Read())
+                {
+                    if (jsonReader.TokenType != JsonToken.Comment)
+                        throw new JsonReaderException("Additional text found in JSON definition after finishing reading.");
+                }
+            }
             if (!json.IsValid(s_definitionSchema))
             {
                 using (var txt = new StringReader(content))
@@ -346,18 +439,17 @@ namespace Democrite.Framework.Builders
                         {
                             var clone = prop.Value.DeepClone();
 
-                            if (clone is JContainer cloneContainer)
+                            if (clone is JObject cloneContainer)
                             {
                                 cloneContainer.Add(new JProperty("OutputType", prop.Name));
-                                foreach (var cloneProp in cloneContainer)
+                                foreach (var cloneProp in cloneContainer.Properties().ToArray())
                                 {
                                     prop.Parent.Add(cloneProp);
                                 }
                             }
                             else
                             {
-                                //TO-DO from Opus 5.5 Adding JValue to JObject throws : When an 'output' entry such as 'static' has a scalar value, clone is a JValue, and JObject.Add(JValue) throws ArgumentException, so the user gets an obscure crash instead of a validation error. Reject non-object values with a clear InvalidDataException, or wrap the value in a named JProperty.
-                                prop.Parent.Add(clone);
+                                throw new InvalidDataException("Output '" + prop.Name + "' (" + prop.Path + ") must be an object");
                             }
                             prop.Remove();
                         }
@@ -393,7 +485,12 @@ namespace Democrite.Framework.Builders
         /// </summary>
         private string ConvertYamlToJson(string content)
         {
-            var yamlObject = s_yamlDeserializer.Deserialize(content);
+            object? yamlObject;
+            using (var yamlTxt = new StringReader(content))
+            {
+                yamlObject = s_yamlDeserializer.Deserialize(new SafeYamlParser(new Parser(yamlTxt)));
+            }
+
             var json = s_toJsonSerializer.Serialize(yamlObject);
             return json;
         }
@@ -477,23 +574,23 @@ namespace Democrite.Framework.Builders
 
             if (def.Targets is not null)
             {
+                // ApplyTarget only record (and return a builder) when at least one target id is resolved
                 triggerFinalizer = await ApplyTarget(def.Targets.Signals,
                                                      ctx,
                                                      RefTypeEnum.Signal,
-                                                     ids => (triggerFinalizer ?? trigger).AddTargetSignals(ids));
+                                                     ids => (triggerFinalizer ?? trigger).AddTargetSignals(ids)) ?? triggerFinalizer;
 
                 triggerFinalizer = await ApplyTarget(def.Targets.Streams,
                                                      ctx,
                                                      RefTypeEnum.StreamQueue,
-                                                     ids => (triggerFinalizer ?? trigger).AddTargetStreams(ids));
+                                                     ids => (triggerFinalizer ?? trigger).AddTargetStreams(ids)) ?? triggerFinalizer;
 
                 triggerFinalizer = await ApplyTarget(def.Targets.Sequences,
                                                      ctx,
                                                      RefTypeEnum.Sequence,
-                                                     ids => (triggerFinalizer ?? trigger).AddTargetSequences(ids));
+                                                     ids => (triggerFinalizer ?? trigger).AddTargetSequences(ids)) ?? triggerFinalizer;
             }
 
-            //TO-DO from Opus 5.5 'At least one target' check is ineffective : ApplyTarget always calls record(...), even with an empty id array, and AddTargetXxx returns the builder. So triggerFinalizer is never null when a 'targets' node exists, and a trigger with no real target compiles. Check the number of resolved ids, or the builder's Targets count, instead.
             if (triggerFinalizer is null)
                 throw new InvalidDataException("A trigger must have at least ONE target");
 
@@ -503,22 +600,22 @@ namespace Democrite.Framework.Builders
         /// <summary>
         /// 
         /// </summary>
-        private async Task<ITriggerDefinitionFinalizeBuilder> ApplyTarget(IReadOnlyCollection<string>? refs,
-                                                                           CompilationContext ctx,
-                                                                           RefTypeEnum refType,
-                                                                           Func<Guid[], ITriggerDefinitionFinalizeBuilder> record)
+        private async Task<ITriggerDefinitionFinalizeBuilder?> ApplyTarget(IReadOnlyCollection<string>? refs,
+                                                                            CompilationContext ctx,
+                                                                            RefTypeEnum refType,
+                                                                            Func<Guid[], ITriggerDefinitionFinalizeBuilder> record)
         {
+            // Convert each ValueTask to Task only once (a ValueTask MUST NOT be consumed more than once)
             var signalTargetTasks = (refs ?? EnumerableHelper<string>.ReadOnly)
-                                        .Select(s => SolveDefinitionReference(s, refType, ctx))
+                                        .Select(s => SolveDefinitionReference(s, refType, ctx).AsTask())
                                         .ToArray();
 
-            //TO-DO from Opus 5.5 ValueTask instances consumed more than once : SafeWhenAllAsync converts each ValueTask with AsTask(), and the code then reads IsCompletedSuccessfully and .Result on the same ValueTask. Consuming a ValueTask more than once is undefined behaviour. The Where(IsCompletedSuccessfully) filter is also dead code because faults already throw. Convert to Task once (`.Select(...).Select(v => v.AsTask()).ToArray()`), await Task.WhenAll and use its results, passing ctx.CancellationToken.
-            await signalTargetTasks.SafeWhenAllAsync();
-            var signalTargets = signalTargetTasks.Where(s => s.IsCompletedSuccessfully)
-                                                 .Select(s => s.Result)
-                                                 .ToArray();
+            var signalTargets = await Task.WhenAll(signalTargetTasks).WaitAsync(ctx.CancellationToken);
 
             ctx.CancellationToken.ThrowIfCancellationRequested();
+
+            if (signalTargets.Length == 0)
+                return null;
 
             return record(signalTargets);
         }
@@ -639,11 +736,14 @@ namespace Democrite.Framework.Builders
             if (execContextParameter is null || !execContextParameter.ParameterType.IsAssignableTo(typeof(IExecutionContext)))
                 throw new InvalidDataException("A method used sequence MUST at least take an IExecutionContext in parameter");
 
+            // Only (ctx) and (input, ctx) method shapes are supported
+            if (mthParameters.Length > 2)
+                throw new InvalidDataException("A method used in sequence MUST take at most two parameters (input, IExecutionContext) : " + useStepDef.Use + "." + useStepDef.Call + " take " + mthParameters.Length);
+
             if (method.IsGenericMethod)
                 method = method.MakeGenericMethodFromParameters(new Type[] { inpuArgType, execConfigType });
 
             var displayName = useStepDef.Use + "." + useStepDef.Call;
-            //TO-DO from Opus 5.5 Methods with more than two parameters mis-bound : Only the 1-parameter (ctx) and 2-parameter (input, ctx) shapes are handled. A method with three or more parameters silently gets only the context argument and fails at runtime. Reject such methods explicitly at compile time with a clear error, or bind the extra parameters.
             if (mthParameters.Length == 2)
             {
                 if (NoneType.IsEqualTo<TInput>())
@@ -713,13 +813,12 @@ namespace Democrite.Framework.Builders
                 var valueType = GetRefId(staticColl.Type, RefTypeEnum.Type);
                 var valueTypeRef = await this._solverService.GetReferenceTypeAsync(valueType);
 
-                if (valueTypeRef is null)
-                    //TO-DO from Opus 5.5 Error message prints null; Item1 unchecked : The message formats valueTypeRef, which is always null in this branch, instead of the requested ref valueType. Also, valueTypeRef.Item1 is not null-checked before MakeGenericType, and staticColl.Values may be null. Report valueType, and check Item1 and Values (as ComputeSequence does).
-                    throw new KeyNotFoundException(string.Format("Data type not founded ref: {0}", valueTypeRef));
+                if (valueTypeRef is null || valueTypeRef.Item1 is null)
+                    throw new KeyNotFoundException(string.Format("Data type not founded ref: {0}", valueType));
 
                 var listValues = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericTypeWithCache(valueTypeRef.Item1))!;
 
-                foreach (var value in staticColl.Values)
+                foreach (var value in staticColl.Values ?? Enumerable.Empty<string>() /* values may be missing from deserialized definition */)
                 {
                     var converted = this._objectConverter.TryConvert(value, valueTypeRef.Item1, out var result);
                     if (converted == false)
@@ -752,6 +851,39 @@ namespace Democrite.Framework.Builders
         {
             if (parameter.ParameterType == value.type)
                 return true;
+
+            if (parameter.ParameterType.IsAssignableFrom(value.type))
+                return true;
+
+            // Numeric values are always parsed as double, allow explicit numeric conversion
+            return IsNumericType(parameter.ParameterType) && IsNumericType(value.type);
+        }
+
+        /// <summary>
+        /// Determines whether <paramref name="type"/> is a numeric primitive type (nullable included)
+        /// </summary>
+        private static bool IsNumericType(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            if (type.IsEnum)
+                return false;
+
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte:
+                case TypeCode.SByte:
+                case TypeCode.Int16:
+                case TypeCode.UInt16:
+                case TypeCode.Int32:
+                case TypeCode.UInt32:
+                case TypeCode.Int64:
+                case TypeCode.UInt64:
+                case TypeCode.Single:
+                case TypeCode.Double:
+                case TypeCode.Decimal:
+                    return true;
+            }
 
             return false;
         }
@@ -794,8 +926,7 @@ namespace Democrite.Framework.Builders
 
                 if (!added)
                 {
-                    //TO-DO from Opus 5.5 Culture-dependent number parsing in YAML args : double.TryParse uses the current culture, so '1.5' fails on a fr-FR host and becomes a string, while '1,5' is accepted. The same YAML compiles differently from one node to another. Pass NumberStyles.Float with CultureInfo.InvariantCulture.
-                    if (double.TryParse(paramSpan, out var number))
+                    if (double.TryParse(paramSpan, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
                     {
                         result.Add((typeof(double), Expression.Constant(number), false));
                         added = true;
@@ -953,14 +1084,24 @@ namespace Democrite.Framework.Builders
                 if (output?.Item1 == null)
                     throw new KeyNotFoundException("Type not found " + outputType);
 
-                //TO-DO from Opus 5.5 Constructor matching indexes args out of range : The predicate calls args[i] for each constructor parameter. A constructor with more parameters than args throws IndexOutOfRangeException, and one with fewer parameters matches and then makes Expression.New fail. Exact type equality also never matches numeric args (always parsed as double). Filter on `c.GetParameters().Length == args.Count` first and use assignability or conversion instead of equality.
-                var ctor = output.Item1.GetConstructors(BindingFlags.Instance | BindingFlags.Public)
-                                       .FirstOrDefault(c => c.GetParameters().Select((p, i) => ParameterMatch(p, args[i])).All(v => v));
+                var candidateCtors = output.Item1.GetConstructors(BindingFlags.Instance | BindingFlags.Public)
+                                                 .Where(c => c.GetParameters().Length == args.Count)
+                                                 .ToArray();
+
+                // Prefer an exact type match, then fallback on compatible (assignable or numeric convertible) parameters
+                var ctor = candidateCtors.FirstOrDefault(c => c.GetParameters().Select((p, i) => p.ParameterType == args[i].type).All(v => v))
+                        ?? candidateCtors.FirstOrDefault(c => c.GetParameters().Select((p, i) => ParameterMatch(p, args[i])).All(v => v));
 
                 if (ctor is null)
                     throw new InvalidDataException("Couldn't found a constructor compatible with args " + string.Join(", ", args.Select(a => a.type)));
 
-                accesExpression = Expression.Lambda(Expression.New(ctor, args.Select(a => a.Value).ToArray()), inputParameters);
+                var ctorParameters = ctor.GetParameters();
+                var ctorArgs = args.Select((a, i) => a.Value.Type == ctorParameters[i].ParameterType
+                                                            ? a.Value
+                                                            : Expression.Convert(a.Value, ctorParameters[i].ParameterType))
+                                   .ToArray();
+
+                accesExpression = Expression.Lambda(Expression.New(ctor, ctorArgs), inputParameters);
             }
             else if (mode == SelectionModeEnum.Property)
             {

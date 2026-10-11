@@ -61,20 +61,26 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
         {
             List<BlackboardCommand>? iniCommands = null;
 
-            //TO-DO from Opus 5.5 Blocking lock held across await : Lock() calls SemaphoreSlim.Wait synchronously and is held across `await controller.InitializationAsync`. A second caller on the same activation blocks the Orleans scheduler thread, which can deadlock. Use `await _locker.WaitAsync(token)` with try/finally Release.
-            using (this._locker.Lock(token))
-            using (var grainTokenSource = token.ToGrainCancellationTokenSource())
+            await this._locker.WaitAsync(token);
+            try
             {
-                if (this._controller == null)
+                using (var grainTokenSource = token.ToGrainCancellationTokenSource())
                 {
-                    var controller = this._grainFactory.GetGrain(this._controllerType, this._boardId).AsReference<IBlackboardBaseControllerGrain>();
-                    var initCmdResuls = await controller.InitializationAsync(this._option, grainTokenSource.Token);
+                    if (this._controller == null)
+                    {
+                        var controller = this._grainFactory.GetGrain(this._controllerType, this._boardId).AsReference<IBlackboardBaseControllerGrain>();
+                        var initCmdResuls = await controller.InitializationAsync(this._option, grainTokenSource.Token);
 
-                    this._controller = controller;
+                        this._controller = controller;
 
-                    if (initCmdResuls is not null && initCmdResuls.Any())
-                        iniCommands = iniCommands.AddRangeOnNull(initCmdResuls);
+                        if (initCmdResuls is not null && initCmdResuls.Any())
+                            iniCommands = iniCommands.AddRangeOnNull(initCmdResuls);
+                    }
                 }
+            }
+            finally
+            {
+                this._locker.Release();
             }
 
             return (this._controller.AsReference<TController>(), (IReadOnlyCollection<BlackboardCommand>?)iniCommands);

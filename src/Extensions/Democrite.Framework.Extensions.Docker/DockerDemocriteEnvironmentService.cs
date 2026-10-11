@@ -36,7 +36,7 @@ namespace Democrite.Framework.Extensions.Docker
         private readonly SupportInitializationImplementation<IServiceProvider> _initCtx;
         private readonly IArtifactDefinitionProvider _artifactDefinitionProvider;
         private readonly ILogger<DockerDemocriteEnvironmentService> _logger;
-        private readonly IOptions<DockerEnvironementOptions> _options;
+        private readonly IOptions<DockerEnvironmentOptions> _options;
 
         private readonly IDockerClientFactory _dockerClientFactory;
 
@@ -47,7 +47,7 @@ namespace Democrite.Framework.Extensions.Docker
         /// <summary>
         /// Initialize a new instance of the class <see cref="DockerDemocriteEnvironmentService"/>
         /// </summary>
-        public DockerDemocriteEnvironmentService(IOptions<DockerEnvironementOptions> option,
+        public DockerDemocriteEnvironmentService(IOptions<DockerEnvironmentOptions> option,
                                                  IArtifactDefinitionProvider artifactDefinitionProvider,
                                                  IDockerClientFactory dockerClientFactory,
                                                  ILogger<DockerDemocriteEnvironmentService>? logger = null)

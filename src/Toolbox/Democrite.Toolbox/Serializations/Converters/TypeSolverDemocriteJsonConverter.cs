@@ -5,7 +5,6 @@ namespace Democrite.Toolbox.Converters
     using Democrite.Toolbox.Serializations;
 
     using System;
-    using System.Collections.Frozen;
     using System.Collections.Generic;
 
     /// <summary>
@@ -17,7 +16,8 @@ namespace Democrite.Toolbox.Converters
 
         private static readonly Type s_traits = typeof(TType);
 
-        private readonly IReadOnlyDictionary<Type, IDemocriteJsonObjectConverterConditions> _props;
+        // Ordered rules : the first matching condition (in registration order) wins
+        private readonly KeyValuePair<Type, IDemocriteJsonObjectConverterConditions>[] _props;
 
         #endregion
 
@@ -28,7 +28,7 @@ namespace Democrite.Toolbox.Converters
         /// </summary>
         public TypeSolverDemocriteJsonConverter(IReadOnlyDictionary<Type, IDemocriteJsonObjectConverterConditions> props)
         {
-            this._props = props.ToFrozenDictionary();
+            this._props = props.ToArray();
         }
 
         #endregion
@@ -63,7 +63,6 @@ namespace Democrite.Toolbox.Converters
             var localObjectType = objectType;
             var localExistingValue = existingValue;
 
-            //TO-DO from Opus 5.5 Non-deterministic rule order; Equals/GetHashCode mismatch : A FrozenDictionary does not keep insertion order, so when several conditions match, which subtype wins is undefined. GetHashCode also hashes the dictionary by reference while Equals compares content. Store the rules in an ordered list, and compute the hash from the content (or drop the custom equality).
             var propCond = this._props.FirstOrDefault(p => p.Value.Validate(getJsonValue, localObjectType, localExistingValue));
 
             if (propCond.Key is not null)
@@ -96,7 +95,17 @@ namespace Democrite.Toolbox.Converters
         /// <inheritdoc />
         public override int GetHashCode()
         {
-            return HashCode.Combine(s_traits, this._props);
+            // Hash computed from the content to stay consistent with Equals
+            var hash = new HashCode();
+            hash.Add(s_traits);
+
+            foreach (var prop in this._props)
+            {
+                hash.Add(prop.Key);
+                hash.Add(prop.Value);
+            }
+
+            return hash.ToHashCode();
         }
 
         #endregion

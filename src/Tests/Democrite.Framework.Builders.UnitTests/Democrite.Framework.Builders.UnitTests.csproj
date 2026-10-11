@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-	<Import Project="$(SolutionDir)\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\SharedFrameworkAssemblyInfo.props" />
 
 	<PropertyGroup>
 		<IsPackable>false</IsPackable>
@@ -9,7 +9,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
-		<PackageReference Include="Moq" />
+		<PackageReference Include="NSubstitute" />
 		<PackageReference Include="NFluent" />
 		<PackageReference Include="xunit" />
 		<PackageReference Include="xunit.runner.visualstudio">
@@ -23,7 +23,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="$(SolutionDir)\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
+		<ProjectReference Include="..\..\..\src\Frameworks\Democrite.Framework.Builders\Democrite.Framework.Builders.csproj" />
 		<ProjectReference Include="..\Democrite.UnitTests.ToolKit\Democrite.UnitTests.ToolKit.csproj" />
 	</ItemGroup>
 

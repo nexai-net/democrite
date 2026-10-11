@@ -162,7 +162,19 @@ namespace Democrite.Framework.Node.Storages
                     default:
                         MemoryStorageInfo? memoryStorageInfo;
 
-                        if (this._memoryStorageInfo.TryGetValue(key, out memoryStorageInfo) == false)
+                        var exist = this._memoryStorageInfo.TryGetValue(key, out memoryStorageInfo);
+
+                        // Validate all the inputs BEFORE any registry change to prevent half-initialized entries
+                        if (storageGrain is null)
+                            throw new InvalidOperationException("Storage Grain must be reported for future request");
+
+                        if (type is null)
+                            throw new InvalidOperationException("Stored object type must be reported for future request");
+
+                        if (parentTypes is null && (!exist || memoryStorageInfo?.ParentType is null))
+                            throw new InvalidOperationException("Stored object parent Types must be reported for future request");
+
+                        if (!exist || memoryStorageInfo is null)
                         {
                             memoryStorageInfo = new MemoryStorageInfo()
                             {
@@ -172,10 +184,6 @@ namespace Democrite.Framework.Node.Storages
                             this._memoryStorageInfo.Add(key, memoryStorageInfo);
                         }
 
-                        //TO-DO from Opus 5.5 Half-initialized registry entry left on error : The new MemoryStorageInfo is added to the dictionary before storageGrain, type and parentTypes are validated, so a throw leaves an entry with a null StorageGrain and StoredType that later read requests fail on. Validate before inserting.
-                        if (storageGrain is null)
-                            throw new InvalidOperationException("Storage Grain must be reported for future request");
-
                         var storageGrainChange = memoryStorageInfo.Storage != storageGrain.Value;
 
                         memoryStorageInfo.EntityKey = entityKey;
@@ -183,13 +191,13 @@ namespace Democrite.Framework.Node.Storages
                         if (storageGrainChange)
                             memoryStorageInfo.Storage = storageGrain.Value;
 
-                        memoryStorageInfo.StoredType = type ?? throw new InvalidOperationException("Stored object type must be reported for future request");
+                        memoryStorageInfo.StoredType = type;
 
                         if (memoryStorageInfo.StorageGrain is null || storageGrainChange)
                             memoryStorageInfo.StorageGrain = this.RegisterGrainFactory.GetGrain<TStorageGrain>(storageGrain.Value);
 
                         if (memoryStorageInfo.ParentType is null)
-                            memoryStorageInfo.ParentType = parentTypes?.ToHashSet() ?? throw new InvalidOperationException("Stored object parent Types must be reported for future request");
+                            memoryStorageInfo.ParentType = parentTypes!.ToHashSet();
                         break;
                 }
             }

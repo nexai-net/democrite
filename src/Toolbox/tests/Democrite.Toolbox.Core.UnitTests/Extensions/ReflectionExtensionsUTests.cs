@@ -4,6 +4,9 @@
 
 namespace Democrite.Toolbox.Core.UnitTests.Extensions
 {
+    using NFluent;
+
+    using System.Collections.Generic;
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Runtime.CompilerServices;
@@ -22,17 +25,48 @@ namespace Democrite.Toolbox.Core.UnitTests.Extensions
             s_genericMethod = ((MethodCallExpression)func.Body).Method.GetGenericMethodDefinition();
         }
 
-        //TO-DO from Opus 5.5 Test without any assertion : Method_Caching_System computes two hash codes and asserts nothing, and it does not call any Democrite code, so it can never fail. Either assert the expected caching behavior of the ReflectionExtensions under test or delete the test.
+        /// <summary>
+        /// Ensure <see cref="ReflectionImplExtensions.MakeGenericMethodWithCache(MethodInfo, Type[])"/> returns the same cached instance for the same generic arguments
+        /// </summary>
         [Fact]
-        public void Method_Caching_System()
+        public void MakeGenericMethodWithCache_Same_Arguments_Return_Cached_Instance()
         {
             var keys = new[] { typeof(double), typeof(string) };
 
-            var method = s_genericMethod.MakeGenericMethod(keys);
-            var method2 = s_genericMethod.MakeGenericMethod(keys);
+            var method = s_genericMethod.MakeGenericMethodWithCache(keys);
+            var method2 = s_genericMethod.MakeGenericMethodWithCache(new[] { typeof(double), typeof(string) });
 
-            var refCode = RuntimeHelpers.GetHashCode(method);
-            var refCode2 = RuntimeHelpers.GetHashCode(method2);
+            Check.That(method).IsEqualTo(s_genericMethod.MakeGenericMethod(keys));
+            Check.That(RuntimeHelpers.GetHashCode(method2)).IsEqualTo(RuntimeHelpers.GetHashCode(method));
+            Check.That(object.ReferenceEquals(method, method2)).IsTrue();
+        }
+
+        /// <summary>
+        /// Ensure <see cref="ReflectionImplExtensions.MakeGenericMethodWithCache(MethodInfo, Type[])"/> distinguishes different generic arguments
+        /// </summary>
+        [Fact]
+        public void MakeGenericMethodWithCache_Different_Arguments_Return_Different_Instance()
+        {
+            var method = s_genericMethod.MakeGenericMethodWithCache(typeof(double), typeof(string));
+            var other = s_genericMethod.MakeGenericMethodWithCache(typeof(int), typeof(string));
+
+            Check.That(other).IsEqualTo(s_genericMethod.MakeGenericMethod(typeof(int), typeof(string)));
+            Check.That(object.ReferenceEquals(method, other)).IsFalse();
+        }
+
+        /// <summary>
+        /// Ensure <see cref="ReflectionImplExtensions.MakeGenericTypeWithCache(Type, Type[])"/> returns the expected type and caches it
+        /// </summary>
+        [Fact]
+        public void MakeGenericTypeWithCache_Same_Arguments_Return_Cached_Instance()
+        {
+            var type = typeof(Dictionary<,>).MakeGenericTypeWithCache(typeof(string), typeof(Guid));
+            var type2 = typeof(Dictionary<,>).MakeGenericTypeWithCache(typeof(string), typeof(Guid));
+            var other = typeof(Dictionary<,>).MakeGenericTypeWithCache(typeof(Guid), typeof(string));
+
+            Check.That(type).IsEqualTo(typeof(Dictionary<string, Guid>));
+            Check.That(object.ReferenceEquals(type, type2)).IsTrue();
+            Check.That(other).IsEqualTo(typeof(Dictionary<Guid, string>));
         }
 
         private static TValue Method<TValue, Tvalue2>(TValue value, Tvalue2 str)

@@ -1,9 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<Import Project="..\..\..\\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\\SharedFrameworkAssemblyInfo.props" />
 
 	<PropertyGroup>
-		<!--TO-DO from Opus 5.5 Packable toolkit ships test-only dependencies : Democrite.UnitTests.ToolKit (and Democrite.Toolbox.UnitTests.ToolKit) is packable but references Microsoft.NET.Test.Sdk, xunit and Moq. The release pipeline would publish a package that forces these on consumers. Set IsPackable to false, or drop Microsoft.NET.Test.Sdk and Moq and mark the test frameworks PrivateAssets if the package is intentional.-->
 		<IsPackable>true</IsPackable>
 		<IsTestProject>false</IsTestProject>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -18,11 +17,9 @@
 		<PackageReference Include="Microsoft.Orleans.TestingHost" />
 		<PackageReference Include="NFluent" />
 		<PackageReference Include="xunit" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="System.ComponentModel.TypeConverter" />
 		
-		<!-- TO BE REPLACE by NSubstitute -->
-		<PackageReference Include="Moq" />
+		<PackageReference Include="NSubstitute" />
 	</ItemGroup>
 
 	<ItemGroup>

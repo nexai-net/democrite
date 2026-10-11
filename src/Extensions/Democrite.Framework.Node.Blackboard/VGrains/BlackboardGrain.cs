@@ -66,7 +66,17 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
     {
         #region Fields
 
-        private static readonly IReadOnlyDictionary<BlackboardCommandTypeEnum, Func<BlackboardGrain, BlackboardCommand, CommandExecutionContext, Task<bool>>> s_rootCommandExecutor;
+        /// <summary>
+        /// Maximum number of nested event reaction loops (events -> commands -> events ...) allowed
+        /// </summary>
+        private const int MaxEventReactionDepth = 64;
+
+        /// <summary>
+        /// Match timeout applied on regex filters provided by callers (protection against catastrophic backtracking)
+        /// </summary>
+        private static readonly TimeSpan s_callerFilterRegexTimeout = TimeSpan.FromSeconds(1);
+
+        private static readonly IReadOnlyDictionary<BlackboardCommandTypeEnum,Func<BlackboardGrain, BlackboardCommand, CommandExecutionContext, Task<bool>>> s_rootCommandExecutor;
 
         private static readonly IReadOnlyDictionary<BlackboardCommandStorageActionTypeEnum, Func<BlackboardGrain, BlackboardCommandStorage, CommandExecutionContext, Task<bool>>> s_rootCommandStorageExecutor;
         private static readonly IReadOnlyDictionary<BlackboardCommandTriggerActionTypeEnum, Func<BlackboardGrain, BlackboardCommandTrigger, CommandExecutionContext, Task<bool>>> s_rootCommandTriggerExecutor;
@@ -100,6 +110,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
         // Extra protection to ensure metadata are always synchronized with data stored
         private readonly ReaderWriterLockSlim _metaDataLocker;
         private readonly SortedSet<BlackboardLogicalTypeHandler> _logicalHandlers;
+        private IReadOnlyCollection<BlackboardLogicalTypeBaseRule>? _appliedLogicalTypeRules;
 
         private IDeferredHandlerVGrain? _deferredHandler;
 
@@ -345,16 +356,21 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                                                                                      .ToDictionary(grp => grp.Key, v => v.Last()) ?? new Dictionary<BlackboardControllerTypeEnum, BlackboardTemplateControllerDefinition>();
 
                     var primaryKey = this.GetPrimaryKey();
-                    foreach (var kvControllerType in indexedCfgController)
-                    {
-                        this.Logger.OptiLog(LogLevel.Debug, "[Blackboard {grainId}] -- Building Controller -- {type} -- {controller}", grainId, kvControllerType.Key, kvControllerType.Value.DisplayName);
 
-                        var controllerType = kvControllerType.Key;
+                    // The default controller (IDefaultBlackboardControllerGrain) only implements the storage controller contract,
+                    // so the fallback can only be applied to the Storage controller type when the template doesn't provide one
+                    var controllerTypes = indexedCfgController.Keys.ToList();
+                    if (!controllerTypes.Any(k => (k & BlackboardControllerTypeEnum.Storage) == BlackboardControllerTypeEnum.Storage))
+                        controllerTypes.Add(BlackboardControllerTypeEnum.Storage);
+
+                    foreach (var controllerType in controllerTypes)
+                    {
                         BlackboardTemplateControllerDefinition? controllerDefinition = null;
 
-                        //TO-DO from Opus 5.5 Default controller fallback is dead code : The loop iterates indexedCfgController itself, so TryGetValue always succeeds and the default-controller branch never runs. Controller types missing from the template therefore get no controller. Iterate over all BlackboardControllerTypeEnum values to apply the intended fallback.
                         if (!indexedCfgController.TryGetValue(controllerType, out controllerDefinition))
                             controllerDefinition = new BlackboardTemplateControllerDefinition(Guid.NewGuid(), controllerType, s_defaultControllerConcretType, DefaultControllerOptions.Default, null);
+
+                        this.Logger.OptiLog(LogLevel.Debug, "[Blackboard {grainId}] -- Building Controller -- {type} -- {controller}", grainId, controllerType, controllerDefinition.DisplayName);
 
                         var grainDefType = controllerDefinition.AgentInterfaceType.ToType();
 
@@ -380,12 +396,17 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                     }
                 }
 
-                var logicalPatternsRules = this.State!.TemplateCopy!.LogicalTypes
+                var currentLogicalTypeRules = this.State!.TemplateCopy!.LogicalTypes;
+                var logicalPatternsRules = currentLogicalTypeRules
                                                                     .GroupBy(k => k.LogicalTypePattern ?? ".*")
                                                                     .ToDictionary(k => k.Key, v => v.Select(kv => kv).ToReadOnly());
 
-                //TO-DO from Opus 5.5 Handler rebuild based only on count : Logical handlers are rebuilt only when the number of patterns changes, so a template update with the same count but different patterns or rules is ignored. Combined with SortedSet deduplication, the counts can also differ permanently. Compare the actual pattern set or rule hash instead.
-                if (logicalPatternsRules.Keys.Count != this._logicalHandlers.Count)
+                // Rebuild when applied rules differ from the template ones (value comparison), not only on pattern count changes
+                var logicalHandlersRebuildRequired = this._appliedLogicalTypeRules is null
+                                                            ? logicalPatternsRules.Keys.Count != this._logicalHandlers.Count
+                                                            : !this._appliedLogicalTypeRules.SequenceEqual(currentLogicalTypeRules);
+
+                if (logicalHandlersRebuildRequired)
                 {
                     this.Logger.OptiLog(LogLevel.Debug, "[Blackboard {grainId}] -- Building Logical Handlers ", grainId);
 
@@ -420,7 +441,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
 
                         this.Logger.OptiLog(LogLevel.Debug, "[Blackboard {grainId}] -- Update Logical Handlers {key}", grainId, kvLogicalType.Key);
 
-                        handler.Update(this._blackboardDataLogicalTypeRuleValidatorProvider,
+                        await handler.UpdateAsync(this._blackboardDataLogicalTypeRuleValidatorProvider,
                                        order,
                                        storage?.Storage ?? this.State.TemplateCopy.DefaultStorageConfig,
                                        remain,
@@ -435,6 +456,8 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
 
                     foreach (var handler in updatedItem)
                         this._logicalHandlers.Add(handler);
+
+                    this._appliedLogicalTypeRules = currentLogicalTypeRules.ToArray();
 
                     try
                     {
@@ -490,8 +513,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             try
             {
                 var metaData = GetAllStoredMetaDatByFilters(logicTypeFilter, displayNameFilter, recordStatusFilter, limit);
-                //TO-DO from Opus 5.5 Lazy metadata enumerated outside lock across awaits : This lazy LINQ over the live registry Dictionary is enumerated after the read lock is released, twice and across awaits in GetAllStoredDataByMetaDataAsync. The method is [AlwaysInterleave], so a concurrent push can mutate the dictionary and cause 'Collection was modified'. Materialize with .ToArray() inside the lock (same issue at line 619).
-                metaDatas = metaData.Select(m => m.Value);
+                metaDatas = metaData.Select(m => m.Value).ToArray();
             }
             finally
             {
@@ -619,7 +641,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             try
             {
                 var metaData = GetAllStoredMetaDatByFilters(filter, limit);
-                metaDatas = metaData.Select(m => m.Value);
+                metaDatas = metaData.Select(m => m.Value).ToArray();
             }
             finally
             {
@@ -805,12 +827,27 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
 
                     if (eventController is not null)
                     {
-                        //TO-DO from Opus 5.5 GrainCancellationTokenSource never disposed : A new GrainCancellationTokenSource is created on every event dispatch and never disposed, leaking token registrations on a hot path. Wrap it in a using block, as done elsewhere in the file.
-                        var eventActions = await eventController.ReactToEventsAsync(new BlackboardEventBook(events), token.ToGrainCancellationTokenSource().Token);
+                        IReadOnlyCollection<BlackboardCommand>? eventActions;
+                        using (var grainTokenSource = token.ToGrainCancellationTokenSource())
+                        {
+                            eventActions = await eventController.ReactToEventsAsync(new BlackboardEventBook(events), grainTokenSource.Token);
+                        }
 
                         if (eventActions is not null && eventActions.Any())
-                            //TO-DO from Opus 5.5 Unbounded event-reaction recursion : Event reactions run commands that raise new events, which go back to the controller recursively. CommandExecutionContext tracks Depth but nothing checks it, so a reacting controller can cause infinite recursion or a stack overflow. Enforce a maximum depth and fail or log when it is exceeded.
+                        {
+                            if (execContext.Depth >= MaxEventReactionDepth)
+                            {
+                                this.Logger.OptiLog(LogLevel.Error,
+                                                    "[BLACKBOARD] [{blackboardId}:{blackboardName}] Event reaction chain exceed the maximum depth {maxDepth}, reactions loop suspected",
+                                                    this.State?.BlackboardId,
+                                                    this.State?.Name,
+                                                    MaxEventReactionDepth);
+
+                                throw new InvalidOperationException("Blackboard event reaction chain exceed the maximum depth " + MaxEventReactionDepth + ", reactions loop suspected");
+                            }
+
                             await CommandExecutionStartPointAsync(token, eventActions, execContext, execContext.Logger);
+                        }
                     }
                 }
 
@@ -847,34 +884,28 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
         /// </summary>
         private async Task<bool> CommandExecutionerAsync(IReadOnlyCollection<BlackboardCommand> commands, CommandExecutionContext context)
         {
-            //TO-DO from Opus 5.5 Unused context and silent unknown-command failure : localCmdExecContext is never used. Commands with no executor (e.g. Response or Deferred returned by an event controller) fall through to a BlackboardCommandExecutionException with an empty message. Remove the dead context and throw an explicit 'unsupported command type' error, or skip query-only commands.
-            using (var localCmdExecContext = new CommandExecutionContext(context))
+            foreach (var cmd in commands)
             {
-                foreach (var cmd in commands)
+                if (!s_rootCommandExecutor.TryGetValue(cmd.ActionType, out var exec))
+                    throw new BlackboardCommandExecutionException(cmd, "Unsupported command type " + cmd.ActionType + " (" + cmd.GetType().Name + ")", null);
+
+                Exception? exception = null;
+                try
                 {
-                    Exception? exception = null;
-                    try
-                    {
-                        if (s_rootCommandExecutor.TryGetValue(cmd.ActionType, out var exec))
-                        {
-                            var execSucceed = await exec(this, cmd, context);
-                            if (execSucceed)
-                                continue;
-
-                            throw new BlackboardCommandExecutionException(cmd, "Execution failed", null);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        exception = ex;
-                    }
-
-                    // TODO : Apply rollback ??
-                    throw new BlackboardCommandExecutionException(cmd, exception?.Message ?? string.Empty, exception);
+                    var execSucceed = await exec(this, cmd, context);
+                    if (execSucceed)
+                        continue;
+                }
+                catch (Exception ex)
+                {
+                    exception = ex;
                 }
 
-                return true;
+                // TODO : Apply rollback ??
+                throw new BlackboardCommandExecutionException(cmd, exception?.Message ?? "Execution failed", exception);
             }
+
+            return true;
         }
 
         private async ValueTask<IRepository<DataRecordContainer, Guid>> GetDedicatedRepositoryAsync(string logicalType, CancellationToken token)
@@ -930,14 +961,13 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
 
             if (!string.IsNullOrEmpty(logicTypeFilter))
             {
-                //TO-DO from Opus 5.5 Caller-supplied regex has no timeout (ReDoS) : Filters from remote callers are compiled into Regex with no match timeout, so a catastrophic-backtracking pattern can block the blackboard activation. Pass a matchTimeout (and possibly RegexOptions.NonBacktracking), and cache compiled patterns (same issue for displayNameFilter).
-                var regFilter = new Regex(logicTypeFilter);
+                var regFilter = new Regex(logicTypeFilter, RegexOptions.None, s_callerFilterRegexTimeout);
                 metaData = metaData.Where(m => regFilter.IsMatch(m.Value.LogicalType));
             }
 
             if (!string.IsNullOrEmpty(displayNameFilter))
             {
-                var regDisplayNameFilter = new Regex(displayNameFilter);
+                var regDisplayNameFilter = new Regex(displayNameFilter, RegexOptions.None, s_callerFilterRegexTimeout);
                 metaData = metaData.Where(m => regDisplayNameFilter.IsMatch(m.Value.DisplayName));
             }
 
@@ -1030,15 +1060,16 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
 
                 logger.OptiLog(LogLevel.Debug, "-- Get repository");
 
-                var metaDatasWithRepoTasks = metaDatas.Select(kv => (RepoTask: GetDedicatedRepositoryAsync(kv.LogicalType, token), kv))
-                                                      .ToArray();
+                // Request the repository only once per logical type and convert each ValueTask to a Task only once
+                var logicalTypeRepoTasks = metaDatas.GroupBy(kv => kv.LogicalType ?? string.Empty)
+                                                    .Select(grp => (RepoTask: GetDedicatedRepositoryAsync(grp.Key, token).AsTask(), MetaDatas: grp))
+                                                    .ToArray();
 
-                await (metaDatasWithRepoTasks.Select(t => t.RepoTask).ToArray()).SafeWhenAllAsync(token);
+                await (logicalTypeRepoTasks.Select(t => t.RepoTask).ToArray()).SafeWhenAllAsync(token);
 
-                //TO-DO from Opus 5.5 ValueTask consumed twice : Each RepoTask ValueTask is consumed once by SafeWhenAllAsync (AsTask) and again through .Result, which breaks the ValueTask single-consumption contract. Convert to Task once (or await each one) and reuse the stored result. Also, the same repository is requested once per metadata entry instead of once per logical type.
-                var fetchTasks = metaDatasWithRepoTasks.GroupBy(kv => kv.RepoTask.Result)
-                                                       .Select(kv => kv.Key.GetValueByIdAsync(kv.Select(k => k.kv.Uid).Distinct().ToArray(), token).AsTask())
-                                                       .ToArray();
+                var fetchTasks = logicalTypeRepoTasks.GroupBy(kv => kv.RepoTask.Result)
+                                                     .Select(kv => kv.Key.GetValueByIdAsync(kv.SelectMany(k => k.MetaDatas).Select(k => k.Uid).Distinct().ToArray(), token).AsTask())
+                                                     .ToArray();
 
                 await fetchTasks.SafeWhenAllAsync(token);
 
@@ -1141,13 +1172,13 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
         {
             CheckInitializationRequiredOrSealedStatus();
 
-            var pendingRequests = this.State?.GetQueries() ?? EnumerableHelper<BlackboardDeferredQueryState>.ReadOnly;
+            // Snapshot the pending queries; solving a query may add or remove entries from the live collection
+            var pendingRequests = this.State?.GetQueries()?.ToArray() ?? EnumerableHelper<BlackboardDeferredQueryState>.ReadOnlyArray;
 
             bool requestSolved = false;
 
             using (var grainCancellation = ctx.CancellationToken.ToGrainCancellationTokenSource())
             {
-                //TO-DO from Opus 5.5 Live dictionary changes during deferred retry loop : GetQueries() returns the live Dictionary.Values, and SolveQueryRequestAsync calls RemoveQuery/AddOrUpdateQuery inside the loop. The next MoveNext then throws 'Collection was modified' outside the per-item try/catch. Snapshot the collection with .ToArray() before iterating.
                 foreach (var req in pendingRequests)
                 {
                     try
@@ -1223,9 +1254,13 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
         {
             BlackboardProcessingIssue? pushIssue = null;
 
-            //TO-DO from Opus 5.5 InsertIfNew flag is never enforced : BlackboardCommandStorageAddRecord.InsertIfNew is set from DataRecordPushRequestTypeEnum.UpdateOnly but is never checked, so an UpdateOnly push creates new records. Add a check that rejects or raises an issue when the record does not exist and InsertIfNew is false.
-            if (this.State!.Registry.RecordMetadatas.TryGetValue(record.Uid, out var existing) && cmd.Override == false)
-                pushIssue = new ConflictBlackboardProcessingRuleIssue(existing.AsEnumerable().ToReadOnly(), record);
+            var recordExists = this.State!.Registry.RecordMetadatas.TryGetValue(record.Uid, out var existing);
+
+            if (!recordExists && cmd.InsertIfNew == false)
+                throw new BlackboardPushValidationException(record, "Record doesn't exist and insertion of new record is not allowed (Update only)", null);
+
+            if (recordExists && cmd.Override == false)
+                pushIssue = new ConflictBlackboardProcessingRuleIssue(existing!.AsEnumerable().ToReadOnly(), record);
 
             if (pushIssue is null)
                 pushIssue = await EnsureRecordValidateRuleAsync(record, ctx.CancellationToken);
@@ -1348,8 +1383,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                     if (runningDeferred is not null)
                     {
                         deferredWorkUid = runningDeferred.Value.DeferredId;
-                        //TO-DO from Opus 5.5 Keep-alive sent with query uid, not deferred uid : KeepDeferredWorkStatusAsync expects the deferred work uid, but it receives the query uid, so the running deferred is never refreshed and can expire. Pass deferredWorkUid.Uid (runningDeferred.Value.DeferredId.Uid).
-                        await this._deferredHandler.KeepDeferredWorkStatusAsync(queryUid, this.IdentityCard);
+                        await this._deferredHandler.KeepDeferredWorkStatusAsync(deferredWorkUid.Uid, this.IdentityCard);
                     }
                     else
                     {
@@ -1369,8 +1403,6 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                     else if (runningDeferred is not null)
                         saveState = this.State!.RemoveQuery(runningDeferred.Value.DeferredId.Uid);
                     else
-                        // TODO : check by request.Uid == DeferredId.SourceId instead of UID
-                        //TO-DO from Opus 5.5 Deferred queries leak, removed with the wrong key : _queries is keyed by DeferredId.Uid, but this removes by QueryUid, so the entry is never removed (see the TODO) and pending queries pile up in persisted state and are retried forever. Look up the entry by DeferredId.SourceId == query.QueryUid.
                         saveState = this.State!.RemoveQuery(query);
                 }
 
@@ -1385,8 +1417,7 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                 if (remainActions.Any())
                     await this.CommandExecutionStartPointAsync(token.CancellationToken, logger, remainActions);
 
-                //TO-DO from Opus 5.5 Always-true condition throws on every null response : `x is not null || x != NoneType.AbstractTrait` is always true, so any query without a response command throws InvalidOperationException, including fire-and-forget commands. Use `&&` so only queries that expect a real response type throw.
-                if (queryResponse is null && (query.ExpectedResponseType is not null || query.ExpectedResponseType != NoneType.AbstractTrait))
+                if (queryResponse is null && (query.ExpectedResponseType is not null && query.ExpectedResponseType != NoneType.AbstractTrait))
                     throw new InvalidOperationException(string.Format("[Blackboard] [Query: {0}] - No Response - Expect response type {1}", query.QueryUid, query.ExpectedResponseType));
 
                 return queryResponse;
@@ -1482,9 +1513,20 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             {
                 ctx.CancellationToken.ThrowIfCancellationRequested();
 
+                // DataRecordContainer is [Immutable] (shared by reference in-silo) : create a new instance instead of mutating the caller one
                 if (record.Uid == Guid.Empty)
-                    //TO-DO from Opus 5.5 Mutates an [Immutable] record : DataRecordContainer is marked [Immutable], so Orleans passes it by reference for in-silo calls. ForceUid changes the caller's instance and its hash code. Create a new container with the generated uid instead of mutating it.
-                    record.ForceUid(Guid.NewGuid());
+                {
+                    record = new DataRecordContainer<TData?>(record.LogicalType,
+                                                             Guid.NewGuid(),
+                                                             record.DisplayName,
+                                                             record.Data,
+                                                             record.Status,
+                                                             record.UTCCreationTime,
+                                                             record.CreatorIdentity,
+                                                             record.UTCLastUpdateTime,
+                                                             record.LastUpdaterIdentity,
+                                                             record.CustomMetadata);
+                }
 
                 if (!NoneType.IsEqualTo<TData>() && !await repository!.PushDataRecordAsync(record, true, ctx.CancellationToken))
                     throw new BlackboardPushException(record, "Push failed", null);
@@ -1623,10 +1665,13 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             {
                 var utcNow = this._timeManager.UtcNow;
 
-                //TO-DO from Opus 5.5 Metadata change is never persisted : Command_ChangeMetaDataFromStorageAsync updates the registry but never sets _needSaving, so the change is lost on deactivation. The event is also emitted as ChangeStatus. Set _needSaving when newItemMetaData is not null.
                 var newItemMetaData = this.State!.Registry.ChangeMetaData(chgCommand.Uid, chgCommand.NewMetaData, utcNow);
                 if (newItemMetaData is null)
                     return TaskHelper.GetFromResultCache(false);
+
+                this._needSaving |= true;
+
+                // No dedicated "ChangeMetaData" storage event type exists, the metadata change is notified as a ChangeStatus event
 
                 ctx.EnqueueEvent(new BlackboardEventStorage(BlackboardEventStorageTypeEnum.ChangeStatus, chgCommand.Uid, newItemMetaData));
 
@@ -1676,18 +1721,15 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                 var utcNow = this._timeManager.UtcNow;
                 var newItem = item.WithNewStatus(chgCommand.NewRecordStatus, utcNow);
 
-                if (newItem is not null)
-                {
-                    //TO-DO from Opus 5.5 Status change leaves repository and registry inconsistent : The registry status is changed whether or not the repository push succeeded, and _needSaving is set only on repository success, so registry and storage can diverge or the change is not persisted. Update the registry and set _needSaving only after a successful push, and fail the command otherwise.
-                    var pushResult = await repository.PushDataRecordAsync(newItem, false, ctx.CancellationToken);
-                    if (pushResult)
-                        this._needSaving |= true;
-                }
+                if (newItem is not null && !await repository.PushDataRecordAsync(newItem, false, ctx.CancellationToken))
+                    throw new BlackboardCommandExecutionException(cmd, "Status change push failed", null);
 
                 this._metaDataLocker.EnterWriteLock();
                 try
                 {
                     var newItemMetaData = this.State!.Registry.ChangeStatus(recordMetadata.Uid, chgCommand.NewRecordStatus, utcNow);
+                    this._needSaving |= true;
+
                     ctx.EnqueueEvent(new BlackboardEventStorage(BlackboardEventStorageTypeEnum.ChangeStatus, chgCommand.Uid, newItemMetaData));
                 }
                 finally
@@ -1815,7 +1857,8 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
             if (this.State!.CurrentLifeStatus == BlackboardLifeStatusEnum.Sealed)
                 return false;
 
-            //TO-DO from Opus 5.5 Sealed status committed before cleanup succeeds : The status becomes Sealed before records are removed and signals detached. If a later command fails, the board stays Sealed with leftover records and subscriptions, and SealedAsync can no longer retry. Change the status after cleanup succeeds, or roll back on failure.
+            var previousStatus = this.State!.CurrentLifeStatus;
+
             await Command_LifeStatus_Changed(cmd, ctx);
 
             this._sealing = true;
@@ -1871,6 +1914,13 @@ namespace Democrite.Framework.Node.Blackboard.VGrains
                     await this.CommandExecutionStartPointAsync(ctx.CancellationToken, sealingCommands, ctx, ctx.Logger);
 
                 return true;
+            }
+            catch
+            {
+                // Cleanup failed : roll back the life status to allow a new sealing attempt
+                this.State!.CurrentLifeStatus = previousStatus;
+                this._needSaving |= true;
+                throw;
             }
             finally
             {

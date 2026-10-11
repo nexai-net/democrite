@@ -37,8 +37,7 @@ namespace Democrite.Toolbox.WPF.Builders
         /// <inheritdoc />
         public IViewBuilder Register<TView, TViewModel>()
         {
-            //TO-DO from Opus 5.5 nameof(TView) yields literal "TView" key : nameof on a type parameter returns the string "TView", so every view registered through this overload gets the same key, and NavigateTo(key) then throws because the key has several relations. Use typeof(TView).Name (or FullName).
-            return Register<TView, TViewModel>(nameof(TView));
+            return Register<TView, TViewModel>(typeof(TView).Name);
         }
 
         /// <inheritdoc />

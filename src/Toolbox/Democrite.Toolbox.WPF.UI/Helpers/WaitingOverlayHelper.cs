@@ -23,6 +23,11 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
                                                                                                         new FrameworkPropertyMetadata(false,
                                                                                                                                       propertyChangedCallback: OnOverlayEnabledChanged));
 
+        private static readonly DependencyProperty s_adornerProperty = DependencyProperty.RegisterAttached("OverlayAdorner",
+                                                                                                          typeof(Adorner),
+                                                                                                          typeof(WaitingOverlayHelper),
+                                                                                                          new PropertyMetadata(null));
+
         #endregion
 
         #region Properties
@@ -64,7 +69,6 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
                     if (inst.IsLoaded == false)
                     {
                         inst.Loaded -= EnabledAdorner;
-                        //TO-DO from Opus 5.5 Overlay never removed, Loaded handler leaks : The Loaded handler is never unsubscribed, so every reload (tab switch, re-templating) adds another adorner. Setting Enabled=false does nothing, so the overlay cannot be removed. Unsubscribe inside EnabledAdorner, track the adorner (for example in an attached property), and remove it when Enabled becomes false.
                         inst.Loaded += EnabledAdorner;
                         return;
                     }
@@ -73,7 +77,26 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
                     EnabledAdorner(inst, null);
 #pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
                 }
+                else
+                {
+                    DisableAdorner(inst);
+                }
             }
+        }
+
+        /// <summary>
+        /// Remove the overlay adorner if any
+        /// </summary>
+        private static void DisableAdorner(ContentControl inst)
+        {
+            inst.Loaded -= EnabledAdorner;
+
+            var adorner = (Adorner?)inst.GetValue(s_adornerProperty);
+            if (adorner is null)
+                return;
+
+            inst.ClearValue(s_adornerProperty);
+            AdornerLayer.GetAdornerLayer(adorner.AdornedElement)?.Remove(adorner);
         }
 
         private static void EnabledAdorner(object sender, RoutedEventArgs e)
@@ -81,6 +104,12 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
             var inst = sender as ContentControl;
 
             if (inst is null)
+                return;
+
+            inst.Loaded -= EnabledAdorner;
+
+            // Overlay already displayed or disabled since
+            if (inst.GetValue(s_adornerProperty) is not null || GetEnabled(inst) == false)
                 return;
 
             var content = inst.Content as UIElement;
@@ -105,6 +134,7 @@ namespace Democrite.Toolbox.WPF.UI.Helpers
 
             var adorner = new AdornerContentPresenter<WaitingOverlay>(content);
             adornerLayer.Add(adorner);
+            inst.SetValue(s_adornerProperty, adorner);
         }
 
         #endregion

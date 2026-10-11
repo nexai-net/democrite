@@ -17,6 +17,6 @@ namespace Democrite.Framework.Client.Configurations
         /// </summary>
         public const string Cluster = ConfigurationSectionNames.Root +
                                       ConfigurationSectionNames.SectionSeparator +
-                                      ClusterClientOptions.ConfiguratioName;
+                                      ClusterClientOptions.ConfigurationName;
     }
 }

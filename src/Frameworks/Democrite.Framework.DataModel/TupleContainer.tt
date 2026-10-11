@@ -4,15 +4,18 @@
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ output extension=".cs" #>
-using Orleans;
+namespace Democrite.Framework.DataModel
+{
+    using Orleans;
 
-using System.ComponentModel;
-
+    using System.ComponentModel;
 <# for (int i = 1; i < 10; ++i) { #>
-[Immutable]
-[Serializable]
-[GenerateSerializer]
-[ImmutableObject(true)]
-public record struct TupleContainer<<#= string.Join(", ", Enumerable.Range(0, i).Select(indx => "TArg" + indx)) #>>(<#= string.Join(", ", Enumerable.Range(0, i).Select(indx => "TArg" + indx + " Item" + indx)) #>);
 
+    [Immutable]
+    [Serializable]
+    [GenerateSerializer]
+    [ImmutableObject(true)]
+    [Alias("TupleContainer`<#= i #>")]
+    public record struct TupleContainer<<#= string.Join(", ", Enumerable.Range(0, i).Select(indx => "TArg" + indx)) #>>(<#= string.Join(", ", Enumerable.Range(0, i).Select(indx => "TArg" + indx + " Item" + indx)) #>);
 <# } #>
+}

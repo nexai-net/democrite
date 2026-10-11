@@ -48,9 +48,19 @@ namespace Democrite.Framework.Builders.Doors
         uint? HistoryMaxRetention { get; }
 
         /// <summary>
-        /// Gets the signal "not consumed" maximum retiention. Default null to keep all the incoming signals
+        /// Gets the signal "not consumed" maximum retention. Default null to keep all the incoming signals
         /// </summary>
-        uint? NotConsumedMaxRetiention { get; }
+        uint? NotConsumedMaxRetention { get; }
+
+        /// <summary>
+        /// Gets the signal "not consumed" maximum retention.
+        /// </summary>
+        [Obsolete("Misspelled, use " + nameof(NotConsumedMaxRetention) + " instead.")]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        uint? NotConsumedMaxRetiention
+        {
+            get { return this.NotConsumedMaxRetention; }
+        }
 
         /// <summary>
         /// Gets the signal ids.

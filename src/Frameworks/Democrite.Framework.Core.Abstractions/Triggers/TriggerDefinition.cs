@@ -111,14 +111,25 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
             if (object.ReferenceEquals(other, this))
                 return true;
 
-            //TO-DO from Opus 5.5 Trigger equality ignores subclass data : There is no OnEquals/OnGetHashCode hook and Cron/Stream/Signal triggers don't override Equals, so two cron triggers with different expressions (or RefId) compare equal and updates are not detected. Add abstract OnEquals/OnGetHashCode and include RefId.
             return this.Uid == other.Uid &&
                    this.Enabled == other.Enabled &&
                    this.TriggerType == other.TriggerType &&
+                   this.RefId == other.RefId &&
                    this.MetaData == other.MetaData &&
                    (this.TriggerGlobalOutputDefinition?.Equals(other.TriggerGlobalOutputDefinition) ?? other.TriggerGlobalOutputDefinition is null) &&
-                   this.Targets.SequenceEqual(other.Targets);
+                   this.Targets.SequenceEqual(other.Targets) &&
+                   OnEquals(other);
         }
+
+        /// <summary>
+        /// Compare specific trigger information, <paramref name="other"/> is not null and is not the same instance
+        /// </summary>
+        protected abstract bool OnEquals(TriggerDefinition other);
+
+        /// <summary>
+        /// Gets specific trigger information hash code
+        /// </summary>
+        protected abstract int OnGetHashCode();
 
         /// <inheritdoc />
         public override bool Equals(object? obj)
@@ -134,8 +145,10 @@ namespace Democrite.Framework.Core.Abstractions.Triggers
         {
             return HashCode.Combine(this.Uid,
                                     this.TriggerType,
+                                    this.RefId,
                                     this.MetaData,
-                                    this.TriggerGlobalOutputDefinition);
+                                    this.TriggerGlobalOutputDefinition,
+                                    OnGetHashCode());
         }
 
         /// <inheritdoc />

@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<Import Project="..\..\..\..\SharedFrameworkAssmblyInfo.props" />
+	<Import Project="..\..\..\..\SharedFrameworkAssemblyInfo.props" />
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
