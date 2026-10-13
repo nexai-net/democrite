@@ -1,3 +1,19 @@
+## democrite becomes M-A-R-I ##
+New repository [MARI](https://github.com/kaonomi/mari)
+
+
+
+
+
+
+## In memory of Mickael Thumerel (from Jerome Fortias)
+
+In 2017, while leading the AI Lab at Sopra Steria in Brussels, my friend Mickael Thumerel and I built the first version of Democrite, a multi-agent framework—my specialty. By 2022, we decided to rebuild it entirely from scratch. We initially planned to launch our own company, but eventually, our journey led us to join the Amexio group.
+
+On December 22, 2024, Mickael passed away after a sudden, tragic illness. Six months later, I stepped down from my role at Amexio.
+
+It took me two years to get my head back into Democrite. Mickael was by far the better developer between us, but with the help of Opus 5.5, I’ve finally reclaimed the codebase and made it my own ag
+Nexai.net was our shared dream. I’ve shed a few quiet tears while coding it, but Nexai.net isn't just a project—it's a continuation of what we built together.
 
 
 ![GitHub Tag](https://img.shields.io/github/v/tag/Nexai-net/democrite?style=for-the-badge)
@@ -956,15 +972,8 @@ In the section [Sample/DynamicDefinition](/samples/DynamicDefinition//)
 - [Microsoft Orleans: Documentation](https://docs.microsoft.com/dotnet/orleans/)
 - [Nexai Community](https://www.nexai-community.net/)
 
-## In memory of Mickael Thumerel (from Jerome Fortias)
+ain.
 
-In 2017, while leading the AI Lab at Sopra Steria in Brussels, my friend Mickael Thumerel and I built the first version of Democrite, a multi-agent framework—my specialty. By 2022, we decided to rebuild it entirely from scratch. We initially planned to launch our own company, but eventually, our journey led us to join the Amexio group.
-
-On December 22, 2024, Mickael passed away after a sudden, tragic illness. Six months later, I stepped down from my role at Amexio.
-
-It took me two years to get my head back into Democrite. Mickael was by far the better developer between us, but with the help of Opus 5.5, I’ve finally reclaimed the codebase and made it my own again.
-
-Nexai.net was our shared dream. I’ve shed a few quiet tears while coding it, but Nexai.net isn't just a project—it's a continuation of what we built together.
 
 I miss you, Micka. I love you, my friend.
 
